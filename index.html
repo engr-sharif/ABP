@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SBMM ABP Soil Contamination Visualizer</title>
+
+<!-- ============================== CDN LIBRARIES ============================== -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.min.js"></script>
+<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://unpkg.com/chart.js@4.4.1/dist/chart.umd.js"></script>
+
+<style>
+/* ============================== LAYOUT / THEME ============================== */
+:root{
+  --bg:#f4f5f7; --panel:#ffffff; --ink:#1f2933; --muted:#6b7280;
+  --line:#d7dbe0; --accent:#1f6feb; --accent-dk:#1450b0;
+  --red:#d7191c; --green:#1a9641; --gray:#9e9e9e; --amber:#f0ad4e;
+  --topbar:#1d2733;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color:var(--ink);background:var(--bg);overflow:hidden;font-size:13px}
+
+/* Top bar */
+#topbar{position:absolute;top:0;left:0;right:0;height:46px;background:var(--topbar);color:#fff;
+  display:flex;align-items:center;gap:14px;padding:0 14px;z-index:1200;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+#topbar h1{font-size:15px;font-weight:600;margin:0;white-space:nowrap}
+#topbar .proj-tag{font-size:11px;color:#9fb3c8;border:1px solid #3a4a5c;border-radius:4px;padding:2px 7px;white-space:nowrap}
+#topbar .spacer{flex:1}
+#unvalidated{background:#b91c1c;color:#fff;font-weight:700;font-size:11px;letter-spacing:.5px;
+  padding:4px 9px;border-radius:4px;animation:pulseBadge 2.4s ease-in-out infinite}
+@keyframes pulseBadge{0%,100%{opacity:1}50%{opacity:.55}}
+#topbar select{background:#2b3a4d;color:#fff;border:1px solid #3a4a5c;border-radius:4px;padding:4px 6px;font-size:12px}
+
+/* Left panel */
+#panel{position:absolute;top:46px;left:0;bottom:0;width:330px;background:var(--panel);
+  border-right:1px solid var(--line);overflow-y:auto;z-index:1100;transition:transform .2s ease;padding-bottom:40px}
+#panel.collapsed{transform:translateX(-330px)}
+#panelToggle{position:absolute;top:54px;left:330px;z-index:1101;background:var(--panel);
+  border:1px solid var(--line);border-left:none;border-radius:0 6px 6px 0;width:22px;height:46px;
+  cursor:pointer;font-size:14px;line-height:46px;text-align:center;transition:left .2s ease;color:var(--muted)}
+#panel.collapsed ~ #panelToggle{left:0}
+
+.section{border-bottom:1px solid var(--line)}
+.section > h2{margin:0;padding:9px 12px;font-size:12px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.5px;color:var(--muted);cursor:pointer;display:flex;justify-content:space-between;align-items:center;
+  user-select:none;background:#fafbfc}
+.section > h2:hover{background:#f0f2f5}
+.section > h2 .chev{transition:transform .15s ease}
+.section.closed > h2 .chev{transform:rotate(-90deg)}
+.section .body{padding:10px 12px}
+.section.closed .body{display:none}
+
+label.field{display:block;margin:7px 0 3px;font-size:11px;font-weight:600;color:var(--muted)}
+select,input[type=text],input[type=number]{width:100%;padding:5px 7px;border:1px solid var(--line);
+  border-radius:5px;font-size:12px;background:#fff;color:var(--ink)}
+.row{display:flex;gap:8px;align-items:center}
+.row > *{flex:1}
+.checkrow{display:flex;align-items:center;gap:7px;margin:5px 0;font-size:12px;cursor:pointer}
+.checkrow input{flex:none;width:auto}
+.btn{display:inline-block;padding:6px 10px;border:1px solid var(--line);border-radius:5px;background:#fff;
+  cursor:pointer;font-size:12px;color:var(--ink);text-align:center}
+.btn:hover{background:#f0f2f5}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn.primary:hover{background:var(--accent-dk)}
+.hint{font-size:11px;color:var(--muted);margin:4px 0}
+
+/* Map */
+#map{position:absolute;top:46px;left:0;right:0;bottom:0;z-index:1}
+.with-panel #map{left:330px}
+
+/* Legend */
+#legend{position:absolute;bottom:22px;right:12px;z-index:1000;background:rgba(255,255,255,.96);
+  border:1px solid var(--line);border-radius:7px;box-shadow:0 2px 10px rgba(0,0,0,.18);
+  padding:10px 12px;min-width:170px;max-width:240px;font-size:12px}
+#legend h3{margin:0 0 6px;font-size:12px;font-weight:700;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+#legend.closed .legend-body{display:none}
+.legend-row{display:flex;align-items:center;gap:8px;margin:3px 0}
+.legend-swatch{width:14px;height:14px;border-radius:3px;flex:none;border:1px solid rgba(0,0,0,.25)}
+.legend-ramp{height:12px;width:100%;border-radius:3px;border:1px solid rgba(0,0,0,.2);margin:4px 0}
+.legend-scale{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+.legend-shape{display:inline-block;width:16px;text-align:center}
+.legend-note{font-size:10px;color:var(--muted);margin-top:6px;border-top:1px solid var(--line);padding-top:5px}
+
+/* Sample marker labels */
+.sample-label{background:rgba(255,255,255,.82);border:1px solid rgba(0,0,0,.2);border-radius:3px;
+  padding:0 3px;font-size:10px;font-weight:600;color:#111;white-space:nowrap;box-shadow:none}
+.sample-label.leaflet-tooltip-left:before,.sample-label.leaflet-tooltip-right:before{display:none}
+
+/* Popups */
+.leaflet-popup-content{margin:10px 12px;max-height:340px;overflow:auto}
+.popup{font-size:12px;line-height:1.45}
+.popup h4{margin:0 0 5px;font-size:13px}
+.popup table{border-collapse:collapse;width:100%;margin:4px 0}
+.popup td{padding:1px 5px 1px 0;vertical-align:top}
+.popup td.k{color:var(--muted);white-space:nowrap}
+.popup .exc-yes{color:var(--red);font-weight:700}
+.popup .exc-no{color:var(--green);font-weight:700}
+.popup .exc-ns{color:var(--gray);font-weight:700}
+.popup .copybtn{margin-top:6px;font-size:11px;padding:3px 7px}
+
+/* North arrow + title block (for export) */
+#northArrow{position:absolute;top:58px;right:14px;z-index:1000;width:42px;height:52px;
+  background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:6px;text-align:center;
+  font-size:10px;font-weight:700;color:#333;padding-top:3px;box-shadow:0 1px 5px rgba(0,0,0,.15)}
+#northArrow svg{display:block;margin:1px auto 0}
+#titleBlock{position:absolute;top:58px;left:344px;z-index:1000;background:rgba(255,255,255,.95);
+  border:1px solid var(--line);border-radius:6px;padding:7px 11px;box-shadow:0 1px 6px rgba(0,0,0,.15);
+  max-width:360px;display:none}
+.with-panel #titleBlock{left:344px}
+body:not(.with-panel) #titleBlock{left:14px}
+#titleBlock.show{display:block}
+#titleBlock .tb-title{font-size:14px;font-weight:700;outline:none}
+#titleBlock .tb-sub{font-size:11px;color:var(--muted);outline:none}
+
+/* cursor coords */
+#coords{position:absolute;bottom:0;left:340px;z-index:1000;background:rgba(255,255,255,.9);
+  border:1px solid var(--line);border-bottom:none;border-left:none;border-radius:0 6px 0 0;
+  padding:2px 8px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+body:not(.with-panel) #coords{left:0}
+
+.stats-table{width:100%;border-collapse:collapse;font-size:11px;font-variant-numeric:tabular-nums}
+.stats-table th,.stats-table td{border:1px solid var(--line);padding:2px 5px;text-align:right}
+.stats-table th{background:#fafbfc;text-align:center}
+.stats-table td.an{text-align:left;font-weight:600}
+.statline{display:flex;justify-content:space-between;margin:2px 0}
+.statline b{font-variant-numeric:tabular-nums}
+
+.swatch-mini{width:11px;height:11px;display:inline-block;border-radius:2px;border:1px solid rgba(0,0,0,.3);vertical-align:-1px}
+
+/* swipe divider (native ROD<->PMB split) */
+#swipeDivider{position:absolute;top:0;bottom:0;width:0;border-left:3px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.5);
+  z-index:900;cursor:ew-resize;display:none}
+#swipeDivider.on{display:block}
+#swipeDivider .grip{position:absolute;top:50%;left:-15px;width:30px;height:30px;margin-top:-15px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;
+  font-size:13px;color:#444}
+#swipeDivider .tagL,#swipeDivider .tagR{position:absolute;top:8px;font-size:11px;font-weight:700;color:#fff;
+  background:rgba(0,0,0,.55);padding:2px 6px;border-radius:3px;white-space:nowrap}
+#swipeDivider .tagL{right:6px}#swipeDivider .tagR{left:6px}
+
+/* ============================== PRINT LAYOUT (figure templates) ============================== */
+@media print{
+  #topbar,#panel,#panelToggle,#coords,
+  .leaflet-control-zoom,.leaflet-pm-toolbar,.leaflet-control-attribution,
+  .leaflet-sbs-range{ display:none !important; }
+  #map{ top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; }
+  #legend,#northArrow,#titleBlock{ box-shadow:none !important; }
+  body{ overflow:visible !important; }
+  @page{ size:landscape; margin:8mm; }
+}
+</style>
+</head>
+<body class="with-panel">
+
+<!-- ============================== TOP BAR ============================== -->
+<div id="topbar">
+  <h1>SBMM ABP Soil Contamination Visualizer</h1>
+  <span class="proj-tag">OU1 · D3913200 · Task 2.1.5</span>
+  <div class="spacer"></div>
+  <label style="font-size:11px;color:#9fb3c8">Base:
+    <select id="baseSelect">
+      <option value="imagery">Esri Satellite</option>
+      <option value="topo">Esri Topo</option>
+      <option value="osm">OpenStreetMap</option>
+      <option value="blank">Blank (white)</option>
+    </select>
+  </label>
+  <span id="unvalidated" title="">UNVALIDATED DATA</span>
+</div>
+
+<!-- ============================== LEFT PANEL ============================== -->
+<div id="panel">
+
+  <div class="section" data-sec="display">
+    <h2>Display &amp; Color <span class="chev">▾</span></h2>
+    <div class="body">
+      <label class="field">Color points by</label>
+      <select id="colorBy">
+        <option value="rod">ROD exceedance</option>
+        <option value="pmb">PMB exceedance</option>
+        <option value="conc">Analyte concentration</option>
+        <option value="ratio">Ratio to threshold (×)</option>
+        <option value="round">Round</option>
+        <option value="driver">Driving COC</option>
+      </select>
+
+      <div id="analyteWrap">
+        <label class="field">Analyte</label>
+        <select id="analyte">
+          <option value="Hg">Mercury (Hg)</option>
+          <option value="As">Arsenic (As)</option>
+          <option value="Sb">Antimony (Sb)</option>
+          <option value="Tl">Thallium (Tl)</option>
+        </select>
+      </div>
+
+      <div id="criterionWrap">
+        <label class="field">Threshold set</label>
+        <div class="row">
+          <select id="criterion">
+            <option value="ROD">ROD remediation goal</option>
+            <option value="PMB">PMB / background</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="checkrow"><input type="checkbox" id="showLabels"> Show ID labels</label>
+      <label class="checkrow"><input type="checkbox" id="logScale" checked> Log color scale (Hg)</label>
+    </div>
+  </div>
+
+  <div class="section" data-sec="layers">
+    <h2>Layers <span class="chev">▾</span></h2>
+    <div class="body">
+      <label class="checkrow"><input type="checkbox" id="togglePoints" checked> Sample points</label>
+      <label class="checkrow"><input type="checkbox" id="toggleHeat"> Heat map (kernel density)</label>
+      <div id="heatCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
+        <label class="field">Weight by</label>
+        <select id="heatAnalyte">
+          <option value="Hg">Mercury (Hg)</option><option value="As">Arsenic (As)</option>
+          <option value="Sb">Antimony (Sb)</option><option value="Tl">Thallium (Tl)</option>
+        </select>
+        <label class="field">Radius <span id="heatRadiusV">28</span></label>
+        <input type="range" id="heatRadius" min="8" max="80" value="28">
+        <label class="field">Blur <span id="heatBlurV">20</span></label>
+        <input type="range" id="heatBlur" min="1" max="50" value="20">
+        <label class="field">Max intensity <span id="heatMaxV">1.0</span></label>
+        <input type="range" id="heatMax" min="0.1" max="1" step="0.05" value="1">
+        <label class="field">Opacity <span id="heatOpV">0.75</span></label>
+        <input type="range" id="heatOp" min="0.1" max="1" step="0.05" value="0.75">
+        <label class="checkrow"><input type="checkbox" id="heatLog" checked> Log-weight (Hg)</label>
+      </div>
+      <label class="checkrow"><input type="checkbox" id="toggleIDW"> IDW surface (clipped to hull)</label>
+      <div id="idwCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
+        <label class="field">Surface analyte</label>
+        <select id="idwAnalyte">
+          <option value="Hg">Mercury (Hg)</option><option value="As">Arsenic (As)</option>
+          <option value="Sb">Antimony (Sb)</option><option value="Tl">Thallium (Tl)</option>
+        </select>
+        <label class="field">Grid resolution <span id="idwResV">90</span> px</label>
+        <input type="range" id="idwRes" min="40" max="160" step="10" value="90">
+        <label class="field">IDW power <span id="idwPowV">2</span></label>
+        <input type="range" id="idwPow" min="1" max="4" step="0.5" value="2">
+        <label class="field">Opacity <span id="idwOpV">0.7</span></label>
+        <input type="range" id="idwOp" min="0.1" max="1" step="0.05" value="0.7">
+        <button class="btn" id="idwRefresh">Rebuild surface</button>
+      </div>
+      <label class="checkrow"><input type="checkbox" id="toggleGrid"> Data-gap grid</label>
+      <div id="gridCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
+        <label class="field">Cell size (ft)</label>
+        <select id="gridSize"><option>25</option><option selected>50</option><option>75</option><option>100</option></select>
+      </div>
+    </div>
+  </div>
+
+  <div class="section closed" data-sec="advanced">
+    <h2>Advanced (SOTA) <span class="chev">▾</span></h2>
+    <div class="body">
+      <label class="checkrow"><input type="checkbox" id="toggleCluster"> Marker clustering</label>
+      <label class="checkrow"><input type="checkbox" id="toggleSwipe"> Split-screen swipe: ROD ↔ PMB</label>
+      <p class="hint" id="swipeHint" style="display:none">Left of the handle = ROD coloring · right = PMB coloring.</p>
+
+      <label class="field">Round time-slider</label>
+      <div class="row">
+        <input type="range" id="timeSlider" min="0" max="2" value="2" step="1" style="flex:3">
+        <button class="btn" id="timePlay" style="flex:none">▶</button>
+      </div>
+      <div class="hint" id="timeLabel">Showing: both rounds</div>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:9px 0">
+      <label class="field">Auto-delineate contamination extent</label>
+      <p class="hint">Draws an editable polygon enclosing the area where the interpolated surface exceeds the active threshold.</p>
+      <div class="row">
+        <select id="delinAnalyte" style="flex:2">
+          <option value="Hg">Hg</option><option value="As">As</option><option value="Sb">Sb</option><option value="Tl">Tl</option>
+        </select>
+        <select id="delinCrit" style="flex:2">
+          <option value="ROD">ROD</option><option value="PMB">PMB</option>
+        </select>
+        <button class="btn" id="delinRun" style="flex:none">Run</button>
+      </div>
+      <div id="delinMsg" class="hint"></div>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:9px 0">
+      <label class="field">Cross-section profile</label>
+      <p class="hint">Draw a polyline, then build a profile of nearby-sample concentration vs distance along the line.</p>
+      <div class="row">
+        <select id="xsAnalyte" style="flex:2">
+          <option value="Hg">Hg</option><option value="As">As</option><option value="Sb">Sb</option><option value="Tl">Tl</option>
+        </select>
+        <button class="btn" id="xsRun" style="flex:none">Profile last line</button>
+      </div>
+      <canvas id="xsChart" height="160" style="margin-top:6px"></canvas>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:9px 0">
+      <label class="field">Figure template</label>
+      <div class="row">
+        <select id="figTemplate" style="flex:3">
+          <option value="">— choose —</option>
+          <option value="loc">Site / Sample Locations</option>
+          <option value="hg">Hg Results (ROD)</option>
+          <option value="as">As Results (ROD)</option>
+          <option value="pmb">PMB Exceedances</option>
+        </select>
+        <button class="btn" id="printBtn" style="flex:none">Print</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section" data-sec="draw">
+    <h2>Draw &amp; Measure <span class="chev">▾</span></h2>
+    <div class="body">
+      <p class="hint">Use the toolbar on the map (top-right) to draw lines, polygons, rectangles, circles, and text. Lines show length; polygons show area + in-polygon stats. Vertices snap to samples.</p>
+      <label class="field">Shape style</label>
+      <div class="row">
+        <span>Line<input type="color" id="styleStroke" value="#1f6feb" style="width:100%"></span>
+        <span>Fill<input type="color" id="styleFill" value="#1f6feb" style="width:100%"></span>
+      </div>
+      <div class="row">
+        <span>Weight<input type="number" id="styleWeight" value="3" min="1" max="10"></span>
+        <span>Fill op<input type="number" id="styleFillOp" value="0.2" min="0" max="1" step="0.05"></span>
+      </div>
+      <label class="checkrow"><input type="checkbox" id="styleDash"> Dashed line</label>
+      <label class="field">Excavation depth for volume (ft)</label>
+      <input type="number" id="digDepth" value="2" min="0" step="0.5">
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="clearDraw">Clear all shapes</button>
+      </div>
+      <div id="measureOut" class="hint"></div>
+    </div>
+  </div>
+
+  <div class="section" data-sec="filters">
+    <h2>Filters <span class="chev">▾</span></h2>
+    <div class="body">
+      <label class="field">Round</label>
+      <select id="fRound"><option value="both">Both</option><option value="1">Round 1 only</option><option value="2">Round 2 only</option></select>
+      <label class="field">Sampled status</label>
+      <select id="fSampled"><option value="all">All</option><option value="yes">Sampled only</option><option value="no">Not sampled only</option></select>
+      <label class="field">Exceedance</label>
+      <select id="fExceed">
+        <option value="all">All</option>
+        <option value="rod">ROD exceedances only</option>
+        <option value="pmb">PMB exceedances only</option>
+        <option value="clean">Clean (passes both)</option>
+      </select>
+      <label class="field">Depth</label>
+      <select id="fDepth"><option value="all">All</option><option value="surface">Surface only</option><option value="deep">Has deep</option></select>
+      <label class="field">Min <span id="fThrAnalyte">Hg</span> concentration: &gt; <span id="fThrV">0</span> mg/kg</label>
+      <input type="range" id="fThr" min="0" max="2700" value="0" step="1">
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="searchId" placeholder="Zoom to ID (e.g. W01)">
+        <button class="btn" id="searchBtn" style="flex:none">Go</button>
+      </div>
+      <button class="btn" id="resetFilters" style="margin-top:8px">Reset filters</button>
+    </div>
+  </div>
+
+  <div class="section" data-sec="stats">
+    <h2>Live Stats <span class="chev">▾</span></h2>
+    <div class="body" id="statsBody"></div>
+  </div>
+
+  <div class="section closed" data-sec="om">
+    <h2>OM vs Shallow Hg (R2) <span class="chev">▾</span></h2>
+    <div class="body">
+      <p class="hint">Round-2 humus-layer Hg vs co-located shallow soil Hg. Points above the 1:1 line have higher Hg in organic matter.</p>
+      <canvas id="omChart" height="220"></canvas>
+    </div>
+  </div>
+
+  <div class="section" data-sec="io">
+    <h2>Export &amp; Session <span class="chev">▾</span></h2>
+    <div class="body">
+      <label class="checkrow"><input type="checkbox" id="showTitleBlock"> Show title block (for figures)</label>
+      <button class="btn primary" id="exportPng" style="width:100%;margin:4px 0">Export map as PNG figure</button>
+      <div class="row">
+        <button class="btn" id="exportShapes">Shapes → GeoJSON</button>
+        <button class="btn" id="exportCsv">Points → CSV</button>
+      </div>
+      <label class="field" style="margin-top:8px">Import GeoJSON (data or shapes)</label>
+      <input type="file" id="importFile" accept=".geojson,.json">
+      <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+      <div class="row">
+        <button class="btn" id="saveSession">Save session</button>
+        <button class="btn" id="loadSession">Load session</button>
+      </div>
+      <label class="checkrow"><input type="checkbox" id="autoSave" checked> Auto-save to browser</label>
+      <div id="sessionMsg" class="hint"></div>
+    </div>
+  </div>
+
+</div>
+<div id="panelToggle" title="Collapse / expand panel">‹</div>
+
+<!-- ============================== MAP & OVERLAYS ============================== -->
+<div id="map"></div>
+
+<div id="northArrow">
+  <svg width="20" height="34" viewBox="0 0 20 34"><polygon points="10,0 17,20 10,15 3,20" fill="#1d2733"/></svg>
+  N
+</div>
+
+<div id="titleBlock">
+  <div class="tb-title" contenteditable="true">Figure X — ABP Surface Soil Sample Locations</div>
+  <div class="tb-sub" contenteditable="true">Sulphur Bank Mercury Mine · Area Between Piles · Rounds 1 &amp; 2</div>
+</div>
+
+<div id="swipeDivider"><div class="grip">⇔</div><div class="tagL">ROD</div><div class="tagR">PMB</div></div>
+
+<div id="coords">—</div>
+
+<!-- ============================== LEGEND ============================== -->
+<div id="legend">
+  <h3 id="legendHead">Legend <span class="legend-collapse">▾</span></h3>
+  <div class="legend-body" id="legendBody"></div>
+</div>
+
+<script>
+/* =========================================================================
+   SECTION 1 — DATA
+   Embedded verbatim from abp_samples.geojson so the app runs from file://.
+   Thresholds are read ONLY from DATA.metadata.criteria (never hard-coded).
+   ========================================================================= */
+const DATA = {"type":"FeatureCollection","metadata":{"title":"SBMM ABP Surface Soil Sampling — Rounds 1 & 2","criteria":{"ROD":{"Hg":204,"As":6.1,"Sb":51,"Tl":1.3},"PMB":{"Hg":58,"As":6.1,"Sb":0.52,"Tl":0.47}},"units":"mg/kg","datum":"WGS84","note":"Round 2 analytical data is UNVALIDATED (Case 52633)."},"features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.670858,39.005268]},"properties":{"id":"SS-01","round":1,"sampled":true,"Hg":210.0,"As":32.0,"Sb":13.0,"Tl":0.12,"rod_exceed":"YES","rod_drivers":"Hg, As","pmb_exceed":"YES","pmb_drivers":"Hg, As, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.670135,39.005286]},"properties":{"id":"SS-02","round":1,"sampled":true,"Hg":270.0,"As":16.0,"Sb":2.2,"Tl":0.12,"rod_exceed":"YES","rod_drivers":"Hg, As","pmb_exceed":"YES","pmb_drivers":"Hg, As, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.670723,39.005681]},"properties":{"id":"SS-03","round":1,"sampled":true,"Hg":16.0,"As":1.9,"Sb":1.0,"Tl":0.41,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668794,39.004826]},"properties":{"id":"SS-04","round":1,"sampled":true,"Hg":960.0,"As":13.0,"Sb":4.8,"Tl":0.29,"rod_exceed":"YES","rod_drivers":"Hg, As","pmb_exceed":"YES","pmb_drivers":"Hg, As, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.669205,39.005078]},"properties":{"id":"SS-05","round":1,"sampled":true,"Hg":230.0,"As":40.0,"Sb":37.0,"Tl":0.16,"rod_exceed":"YES","rod_drivers":"Hg, As","pmb_exceed":"YES","pmb_drivers":"Hg, As, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.669195,39.005428]},"properties":{"id":"SS-06","round":1,"sampled":true,"Hg":1.9,"As":6.3,"Sb":0.65,"Tl":0.19,"rod_exceed":"YES","rod_drivers":"As","pmb_exceed":"YES","pmb_drivers":"As, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.66933,39.005667]},"properties":{"id":"SS-07","round":1,"sampled":true,"Hg":17.0,"As":6.2,"Sb":3.4,"Tl":0.23,"rod_exceed":"YES","rod_drivers":"As","pmb_exceed":"YES","pmb_drivers":"As, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668851,39.006076]},"properties":{"id":"SS-08","round":1,"sampled":true,"Hg":65.0,"As":0.59,"Sb":0.86,"Tl":0.091,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.669578,39.00635]},"properties":{"id":"SS-09","round":1,"sampled":true,"Hg":55.0,"As":7.0,"Sb":2.1,"Tl":0.32,"rod_exceed":"YES","rod_drivers":"As","pmb_exceed":"YES","pmb_drivers":"As, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.669621,39.006838]},"properties":{"id":"SS-10","round":1,"sampled":true,"Hg":19.0,"As":5.3,"Sb":1.2,"Tl":0.091,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.669531,39.00721]},"properties":{"id":"SS-11","round":1,"sampled":true,"Hg":9.1,"As":2.3,"Sb":0.85,"Tl":0.2,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.669684,39.007476]},"properties":{"id":"SS-12","round":1,"sampled":true,"Hg":55.0,"As":1.5,"Sb":0.2,"Tl":0.17,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"NO","pmb_drivers":null,"depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668894,39.007543]},"properties":{"id":"SS-13","round":1,"sampled":true,"Hg":780.0,"As":3.1,"Sb":1.2,"Tl":0.3,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668997,39.00728]},"properties":{"id":"SS-14","round":1,"sampled":false,"Hg":null,"As":null,"Sb":null,"Tl":null,"rod_exceed":"NOT SAMPLED","rod_drivers":null,"pmb_exceed":"NOT SAMPLED","pmb_drivers":null,"depth":"Shallow","notes":"Deferred to Round 2"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668757,39.007055]},"properties":{"id":"SS-15","round":1,"sampled":true,"Hg":170.0,"As":1.2,"Sb":0.24,"Tl":0.34,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668047,39.007146]},"properties":{"id":"SS-16","round":1,"sampled":true,"Hg":56.0,"As":1.7,"Sb":0.35,"Tl":0.21,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"NO","pmb_drivers":null,"depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668618,39.006847]},"properties":{"id":"SS-17","round":1,"sampled":true,"Hg":1000.0,"As":1.1,"Sb":0.39,"Tl":0.27,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668758,39.006493]},"properties":{"id":"SS-18","round":1,"sampled":true,"Hg":1500.0,"As":1.3,"Sb":0.45,"Tl":0.19,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668144,39.005612]},"properties":{"id":"SS-19","round":1,"sampled":false,"Hg":null,"As":null,"Sb":null,"Tl":null,"rod_exceed":"NOT SAMPLED","rod_drivers":null,"pmb_exceed":"NOT SAMPLED","pmb_drivers":null,"depth":"Shallow","notes":"Deferred to Round 2"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668416,39.005327]},"properties":{"id":"SS-20","round":1,"sampled":true,"Hg":280.0,"As":2.1,"Sb":0.53,"Tl":0.26,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.667727,39.004762]},"properties":{"id":"SS-21","round":1,"sampled":true,"Hg":130.0,"As":11.0,"Sb":4.7,"Tl":0.19,"rod_exceed":"YES","rod_drivers":"As","pmb_exceed":"YES","pmb_drivers":"Hg, As, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.667652,39.004997]},"properties":{"id":"SS-22","round":1,"sampled":true,"Hg":360.0,"As":7.8,"Sb":4.2,"Tl":0.28,"rod_exceed":"YES","rod_drivers":"Hg, As","pmb_exceed":"YES","pmb_drivers":"Hg, As, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.667758,39.005229]},"properties":{"id":"SS-23","round":1,"sampled":false,"Hg":null,"As":null,"Sb":null,"Tl":null,"rod_exceed":"NOT SAMPLED","rod_drivers":null,"pmb_exceed":"NOT SAMPLED","pmb_drivers":null,"depth":"Shallow","notes":"Deferred to Round 2"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.667103,39.005414]},"properties":{"id":"SS-24","round":1,"sampled":false,"Hg":null,"As":null,"Sb":null,"Tl":null,"rod_exceed":"NOT SAMPLED","rod_drivers":null,"pmb_exceed":"NOT SAMPLED","pmb_drivers":null,"depth":"Shallow","notes":"Deferred to Round 2"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.66664,39.005364]},"properties":{"id":"SS-25","round":1,"sampled":false,"Hg":null,"As":null,"Sb":null,"Tl":null,"rod_exceed":"NOT SAMPLED","rod_drivers":null,"pmb_exceed":"NOT SAMPLED","pmb_drivers":null,"depth":"Shallow","notes":"Deferred to Round 2"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665878,39.005175]},"properties":{"id":"SS-26","round":1,"sampled":false,"Hg":null,"As":null,"Sb":null,"Tl":null,"rod_exceed":"NOT SAMPLED","rod_drivers":null,"pmb_exceed":"NOT SAMPLED","pmb_drivers":null,"depth":"Shallow","notes":"Deferred to Round 2"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.66583,39.005487]},"properties":{"id":"SS-27","round":1,"sampled":false,"Hg":null,"As":null,"Sb":null,"Tl":null,"rod_exceed":"NOT SAMPLED","rod_drivers":null,"pmb_exceed":"NOT SAMPLED","pmb_drivers":null,"depth":"Shallow","notes":"Deferred to Round 2"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665732,39.005789]},"properties":{"id":"SS-28","round":1,"sampled":false,"Hg":null,"As":null,"Sb":null,"Tl":null,"rod_exceed":"NOT SAMPLED","rod_drivers":null,"pmb_exceed":"NOT SAMPLED","pmb_drivers":null,"depth":"Shallow","notes":"Deferred to Round 2"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666705,39.005967]},"properties":{"id":"SS-29","round":1,"sampled":true,"Hg":230.0,"As":0.47,"Sb":0.45,"Tl":0.22,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.66646,39.005968]},"properties":{"id":"SS-30","round":1,"sampled":true,"Hg":390.0,"As":0.9,"Sb":0.29,"Tl":0.23,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666803,39.006175]},"properties":{"id":"SS-31","round":1,"sampled":true,"Hg":230.0,"As":0.57,"Sb":0.31,"Tl":0.22,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666265,39.006168]},"properties":{"id":"SS-32","round":1,"sampled":true,"Hg":220.0,"As":7.9,"Sb":3.1,"Tl":0.092,"rod_exceed":"YES","rod_drivers":"Hg, As","pmb_exceed":"YES","pmb_drivers":"Hg, As, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665714,39.006377]},"properties":{"id":"SS-33","round":1,"sampled":true,"Hg":170.0,"As":2.0,"Sb":0.26,"Tl":0.22,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665525,39.006612]},"properties":{"id":"SS-34","round":1,"sampled":true,"Hg":110.0,"As":2.8,"Sb":0.19,"Tl":0.2,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666106,39.006936]},"properties":{"id":"SS-35","round":1,"sampled":true,"Hg":1200.0,"As":7.2,"Sb":8.3,"Tl":0.46,"rod_exceed":"YES","rod_drivers":"Hg, As","pmb_exceed":"YES","pmb_drivers":"Hg, As, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666159,39.007419]},"properties":{"id":"SS-36","round":1,"sampled":false,"Hg":null,"As":null,"Sb":null,"Tl":null,"rod_exceed":"NOT SAMPLED","rod_drivers":null,"pmb_exceed":"NOT SAMPLED","pmb_drivers":null,"depth":"Shallow","notes":"Deferred to Round 2"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.66721,39.006667]},"properties":{"id":"SS-37","round":1,"sampled":true,"Hg":470.0,"As":0.93,"Sb":0.66,"Tl":0.095,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.667462,39.00694]},"properties":{"id":"SS-38","round":1,"sampled":true,"Hg":620.0,"As":3.5,"Sb":3.9,"Tl":0.14,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.667635,39.00759]},"properties":{"id":"SS-39","round":1,"sampled":true,"Hg":220.0,"As":6.0,"Sb":5.3,"Tl":0.28,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.667005,39.007695]},"properties":{"id":"SS-40","round":1,"sampled":true,"Hg":660.0,"As":20.0,"Sb":34.0,"Tl":0.38,"rod_exceed":"YES","rod_drivers":"Hg, As","pmb_exceed":"YES","pmb_drivers":"Hg, As, Sb","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666428,39.00791]},"properties":{"id":"SS-41","round":1,"sampled":true,"Hg":1.8,"As":1.5,"Sb":1.1,"Tl":0.5,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Sb, Tl","depth":"Shallow","notes":""}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.669817,39.00596]},"properties":{"id":"W01","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Characterization Data Gap","Hg":1300.0,"As":2.7,"Sb":1.9,"Tl":0.87,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":470.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668383,39.007557]},"properties":{"id":"W02","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 780 mg/kg Hg nearby","Hg":64.0,"As":2.7,"Sb":1.3,"Tl":0.63,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":320.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668135,39.007129]},"properties":{"id":"W03","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 1000 mg/kg Hg nearby","Hg":37.0,"As":1.7,"Sb":1.5,"Tl":0.74,"Hg_deep":44.0,"As_deep":2.0,"Sb_deep":2.0,"Tl_deep":0.98,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":81.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.669486,39.006637]},"properties":{"id":"W04","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 1100 mg/kg Hg nearby","Hg":130.0,"As":1.7,"Sb":1.2,"Tl":0.59,"Hg_deep":81.0,"As_deep":1.5,"Sb_deep":1.2,"Tl_deep":0.61,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":230.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668655,39.006703]},"properties":{"id":"W05","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 1500 mg/kg Hg nearby","Hg":170.0,"As":0.65,"Sb":1.5,"Tl":0.76,"Hg_deep":150.0,"As_deep":0.71,"Sb_deep":1.5,"Tl_deep":0.77,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":330.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.669075,39.006469]},"properties":{"id":"W06","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 700 mg/kg Hg nearby","Hg":1400.0,"As":1.3,"Sb":1.4,"Tl":0.7,"Hg_deep":1200.0,"As_deep":1.1,"Sb_deep":1.4,"Tl_deep":0.68,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":470.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668798,39.006321]},"properties":{"id":"W07","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 1500 mg/kg Hg nearby","Hg":1700.0,"As":1.6,"Sb":1.6,"Tl":0.78,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":810.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.670387,39.00647]},"properties":{"id":"W08","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Characterization - Data Gap","Hg":11.0,"As":2.1,"Sb":1.2,"Tl":0.6,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":8.2,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668634,39.00595]},"properties":{"id":"W09","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 860 mg/kg Hg nearby","Hg":86.0,"As":0.7,"Sb":1.5,"Tl":0.76,"Hg_deep":42.0,"As_deep":0.6,"Sb_deep":1.6,"Tl_deep":0.78,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":210.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668975,39.005882]},"properties":{"id":"W10","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 860 mg/kg Hg nearby","Hg":2700.0,"As":2.7,"Sb":1.4,"Tl":0.7,"Hg_deep":240.0,"As_deep":0.93,"Sb_deep":1.3,"Tl_deep":0.67,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":1600.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.66921,39.005911]},"properties":{"id":"W11","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 860 mg/kg Hg nearby","Hg":230.0,"As":1.4,"Sb":1.4,"Tl":0.68,"Hg_deep":120.0,"As_deep":0.66,"Sb_deep":1.4,"Tl_deep":0.69,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":220.0,"OM_effect":"~equal"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668842,39.005544]},"properties":{"id":"W12","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 1900 mg/kg Hg nearby","Hg":69.0,"As":2.8,"Sb":1.5,"Tl":0.74,"Hg_deep":250.0,"As_deep":0.76,"Sb_deep":1.4,"Tl_deep":0.68,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":160.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.669296,39.007455]},"properties":{"id":"W13","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 990 mg/kg Hg nearby","Hg":1300.0,"As":1.4,"Sb":1.2,"Tl":0.61,"Hg_deep":3300.0,"As_deep":1.3,"Sb_deep":1.3,"Tl_deep":0.64,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":1500.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668607,39.005568]},"properties":{"id":"W14","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 1900 mg/kg Hg nearby","Hg":240.0,"As":1.1,"Sb":1.5,"Tl":0.73,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":260.0,"OM_effect":"~equal"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668286,39.005351]},"properties":{"id":"W15","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 1900 mg/kg Hg nearby","Hg":290.0,"As":1.3,"Sb":1.5,"Tl":0.76,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":420.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.667761,39.005299]},"properties":{"id":"W16","round":2,"sampled":false,"coord_source":"Planned","depth":"","field_note":"Delineation - 1000 mg/kg Hg nearby","Hg":null,"As":null,"Sb":null,"Tl":null,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NOT SAMPLED","rod_drivers":null,"pmb_exceed":null,"pmb_drivers":null,"has_fd":"","not_sampled_reason":"Access issue - overgrown vegetation and trees blocking access."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668195,39.00487]},"properties":{"id":"W17","round":2,"sampled":false,"coord_source":"Planned","depth":"","field_note":"Delineation - 1000 mg/kg Hg nearby","Hg":null,"As":null,"Sb":null,"Tl":null,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NOT SAMPLED","rod_drivers":null,"pmb_exceed":null,"pmb_drivers":null,"has_fd":"","not_sampled_reason":"Not sampled - location is outside the area of concern and a haul road will be constructed over this location; data gap no longer relevant."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.667862,39.007339]},"properties":{"id":"W18","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 550 mg/kg Hg nearby","Hg":79.0,"As":2.4,"Sb":1.4,"Tl":0.7,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":44.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668551,39.007339]},"properties":{"id":"W19","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 780 mg/kg Hg nearby","Hg":130.0,"As":1.8,"Sb":1.4,"Tl":0.72,"Hg_deep":210.0,"As_deep":1.3,"Sb_deep":1.3,"Tl_deep":0.64,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"Yes","not_sampled_reason":"","Hg_OM":130.0,"OM_effect":"~equal"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.669104,39.007139]},"properties":{"id":"W20","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 990 mg/kg Hg nearby","Hg":1000.0,"As":1.2,"Sb":1.2,"Tl":0.62,"Hg_deep":230.0,"As_deep":0.51,"Sb_deep":1.2,"Tl_deep":0.58,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":520.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668846,39.007109]},"properties":{"id":"W21","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 990 mg/kg Hg nearby","Hg":77.0,"As":1.1,"Sb":1.3,"Tl":0.65,"Hg_deep":51.0,"As_deep":1.0,"Sb_deep":1.3,"Tl_deep":0.63,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":59.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.669225,39.007099]},"properties":{"id":"W22","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 1100 mg/kg Hg nearby","Hg":1700.0,"As":1.2,"Sb":1.2,"Tl":0.59,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":1600.0,"OM_effect":"~equal"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.668526,39.00705]},"properties":{"id":"W23","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 1000 mg/kg Hg nearby","Hg":120.0,"As":1.7,"Sb":1.5,"Tl":0.77,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"Yes","not_sampled_reason":"","Hg_OM":150.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.669064,39.006871]},"properties":{"id":"W24","round":2,"sampled":true,"coord_source":"Planned","depth":"Shallow + Deep","field_note":"Delineation - 1100 mg/kg Hg nearby","Hg":1200.0,"As":1.1,"Sb":1.4,"Tl":0.7,"Hg_deep":770.0,"As_deep":0.58,"Sb_deep":1.4,"Tl_deep":0.71,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":360.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666586,39.007531]},"properties":{"id":"E01","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Characterization - elevated (240 mg/kg nearby)","Hg":200.0,"As":5.4,"Sb":1.8,"Tl":0.73,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":170.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665163,39.006899]},"properties":{"id":"E02","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Characterization - Data Gap","Hg":55.0,"As":4.3,"Sb":1.3,"Tl":0.66,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":100.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666075,39.006657]},"properties":{"id":"E03","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Characterization - elevated (1200 mg/kg nearby)","Hg":60.0,"As":1.8,"Sb":1.3,"Tl":0.64,"Hg_deep":65.0,"As_deep":1.4,"Sb_deep":1.3,"Tl_deep":0.67,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":100.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665269,39.006625]},"properties":{"id":"E04","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Characterization - elevated (110 mg/kg nearby)","Hg":33.0,"As":3.0,"Sb":1.3,"Tl":0.64,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":37.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665548,39.006194]},"properties":{"id":"E05","round":2,"sampled":false,"coord_source":"Planned","depth":"","field_note":"Characterization - data gap in eastern area, shallow bedrock expected","Hg":null,"As":null,"Sb":null,"Tl":null,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NOT SAMPLED","rod_drivers":null,"pmb_exceed":null,"pmb_drivers":null,"has_fd":"","not_sampled_reason":"Access issue - location could not be accessed."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665147,39.005798]},"properties":{"id":"E06","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Characterization - Data Gap","Hg":54.0,"As":2.5,"Sb":1.4,"Tl":0.68,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":83.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.66617,39.005361]},"properties":{"id":"E07","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Characterization - elevated (290 mg/kg nearby)","Hg":280.0,"As":1.9,"Sb":1.6,"Tl":0.78,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":180.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666292,39.007325]},"properties":{"id":"E08","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Characterization - Data Gap","Hg":250.0,"As":4.6,"Sb":1.3,"Tl":0.65,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"Yes","not_sampled_reason":"","Hg_OM":140.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666636,39.00641]},"properties":{"id":"E09","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 1800 mg/kg Hg nearby","Hg":150.0,"As":0.85,"Sb":1.5,"Tl":0.74,"Hg_deep":55.0,"As_deep":0.71,"Sb_deep":1.5,"Tl_deep":0.74,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":230.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665985,39.006287]},"properties":{"id":"E10","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - fill gap between SS32 and ABWP02-22 hot zones","Hg":300.0,"As":1.2,"Sb":1.3,"Tl":0.65,"Hg_deep":220.0,"As_deep":0.86,"Sb_deep":1.2,"Tl_deep":0.61,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":620.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666591,39.006142]},"properties":{"id":"E11","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - Data Gap - Hot Zone","Hg":130.0,"As":0.69,"Sb":1.6,"Tl":0.78,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":32.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665422,39.005891]},"properties":{"id":"E12","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 830 mg/kg Hg nearby","Hg":56.0,"As":1.7,"Sb":1.3,"Tl":0.65,"Hg_deep":49.0,"As_deep":1.5,"Sb_deep":1.2,"Tl_deep":0.6,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":48.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.66589,39.005923]},"properties":{"id":"E13","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 830 mg/kg Hg nearby","Hg":210.0,"As":0.78,"Sb":1.3,"Tl":0.67,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":200.0,"OM_effect":"~equal"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665843,39.005725]},"properties":{"id":"E14","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 2700 mg/kg Hg nearby","Hg":330.0,"As":1.3,"Sb":1.4,"Tl":0.71,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":130.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665463,39.005528]},"properties":{"id":"E15","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - Data Gap","Hg":110.0,"As":1.5,"Sb":1.4,"Tl":0.7,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":21.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666042,39.005558]},"properties":{"id":"E16","round":2,"sampled":true,"coord_source":"Planned","depth":"Shallow","field_note":"Delineation - 2700 mg/kg Hg nearby","Hg":310.0,"As":1.2,"Sb":1.5,"Tl":0.75,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":100.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666359,39.005447]},"properties":{"id":"E17","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 820 mg/kg Hg nearby","Hg":360.0,"As":1.2,"Sb":1.5,"Tl":0.75,"Hg_deep":250.0,"As_deep":0.19,"Sb_deep":1.5,"Tl_deep":0.73,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"Yes","not_sampled_reason":"","Hg_OM":63.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665787,39.005408]},"properties":{"id":"E18","round":2,"sampled":false,"coord_source":"Planned","depth":"","field_note":"Delineation - 2700 mg/kg Hg nearby","Hg":null,"As":null,"Sb":null,"Tl":null,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NOT SAMPLED","rod_drivers":null,"pmb_exceed":null,"pmb_drivers":null,"has_fd":"","not_sampled_reason":"Access issue - heavy vegetation blocking access."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666526,39.007008]},"properties":{"id":"E19","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Characterization - Data Gap","Hg":87.0,"As":2.3,"Sb":1.2,"Tl":0.6,"Hg_deep":33.0,"As_deep":1.5,"Sb_deep":1.3,"Tl_deep":0.63,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":230.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.66624,39.00707]},"properties":{"id":"E20","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 1200 mg/kg Hg nearby","Hg":54.0,"As":2.3,"Sb":1.2,"Tl":0.61,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Sb, Tl","has_fd":"Yes","not_sampled_reason":"","Hg_OM":48.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.66658,39.006753]},"properties":{"id":"E21","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 1200 mg/kg Hg nearby","Hg":84.0,"As":0.98,"Sb":1.4,"Tl":0.68,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":100.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.667178,39.006744]},"properties":{"id":"E22","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 470 mg/kg Hg nearby","Hg":1700.0,"As":0.7,"Sb":1.5,"Tl":0.77,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":1100.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666323,39.0068]},"properties":{"id":"E23","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 1200 mg/kg Hg nearby","Hg":47.0,"As":1.8,"Sb":1.3,"Tl":0.66,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":74.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.667051,39.006506]},"properties":{"id":"E24","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow + Deep","field_note":"Delineation - 1800 mg/kg Hg nearby","Hg":1500.0,"As":0.54,"Sb":1.7,"Tl":0.83,"Hg_deep":2800.0,"As_deep":0.46,"Sb_deep":1.7,"Tl_deep":0.84,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":820.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666362,39.006584]},"properties":{"id":"E25","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 700 mg/kg Hg nearby","Hg":40.0,"As":0.84,"Sb":1.2,"Tl":0.59,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":23.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.66578,39.006538]},"properties":{"id":"E26","round":2,"sampled":true,"coord_source":"Relocated","depth":"Shallow","field_note":"Delineation - 470 mg/kg Hg nearby","Hg":100.0,"As":1.8,"Sb":1.2,"Tl":0.58,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":180.0,"OM_effect":"OM higher"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665611,39.00593]},"properties":{"id":"OS1","round":2,"sampled":true,"coord_source":"Field (FM)","depth":"Shallow","field_note":"","Hg":61.0,"As":1.2,"Sb":1.5,"Tl":0.73,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":38.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.666328,39.005009]},"properties":{"id":"OS2","round":2,"sampled":true,"coord_source":"Field (FM)","depth":"Shallow","field_note":"","Hg":230.0,"As":1.5,"Sb":1.4,"Tl":0.71,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"YES","rod_drivers":"Hg","pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":61.0,"OM_effect":"OM lower"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-122.665226,39.005445]},"properties":{"id":"OS3","round":2,"sampled":true,"coord_source":"Manual (provided)","depth":"Shallow","field_note":"Opportunistic field sample","Hg":80.0,"As":1.8,"Sb":1.4,"Tl":0.68,"Hg_deep":null,"As_deep":null,"Sb_deep":null,"Tl_deep":null,"rod_exceed":"NO","rod_drivers":null,"pmb_exceed":"YES","pmb_drivers":"Hg, Sb, Tl","has_fd":"","not_sampled_reason":"","Hg_OM":67.0,"OM_effect":"OM lower"}}]};
+
+const CRITERIA = DATA.metadata.criteria;          // { ROD:{Hg,As,Sb,Tl}, PMB:{...} }
+const ANALYTES = ['Hg','As','Sb','Tl'];
+const ANALYTE_LABEL = {Hg:'Mercury (Hg)',As:'Arsenic (As)',Sb:'Antimony (Sb)',Tl:'Thallium (Tl)'};
+const UNITS = DATA.metadata.units || 'mg/kg';
+
+// UI state
+const STATE = {
+  colorBy:'rod', analyte:'Hg', criterion:'ROD',
+  showLabels:false, logScale:true,
+  showPoints:true,
+  filters:{ round:'both', sampled:'all', exceed:'all', depth:'all', thr:0 }
+};
+
+document.getElementById('unvalidated').title = DATA.metadata.note || 'Round 2 data is unvalidated.';
+
+// ---- small helpers -------------------------------------------------------
+const isNum = v => typeof v === 'number' && isFinite(v);
+const num = v => isNum(v) ? v : null;
+function shapeOf(p){                       // round/OS -> shape
+  if(String(p.id).toUpperCase().startsWith('OS')) return 'triangle';
+  return p.round === 1 ? 'circle' : 'square';
+}
+function hasDeep(p){ return typeof p.depth === 'string' && p.depth.indexOf('Deep') >= 0; }
+
+/* =========================================================================
+   SECTION 2 — MAP & BASE LAYERS
+   ========================================================================= */
+const map = L.map('map', { zoomControl:true, maxZoom:22, preferCanvas:false });
+
+const bases = {
+  imagery: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            { maxZoom:22, maxNativeZoom:19, crossOrigin:'anonymous', attribution:'Imagery © Esri, Maxar, Earthstar Geographics' }),
+  topo:    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+            { maxZoom:22, maxNativeZoom:19, crossOrigin:'anonymous', attribution:'© Esri' }),
+  osm:     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            { maxZoom:19, crossOrigin:'anonymous', attribution:'© OpenStreetMap contributors' }),
+  blank:   L.tileLayer('', { maxZoom:22 })
+};
+let currentBase = bases.imagery.addTo(map);
+document.getElementById('baseSelect').addEventListener('change', e=>{
+  map.removeLayer(currentBase);
+  currentBase = bases[e.target.value];
+  if(e.target.value === 'blank'){ document.getElementById('map').style.background='#fff'; }
+  else { document.getElementById('map').style.background=''; }
+  currentBase.addTo(map);
+  currentBase.bringToBack();
+});
+
+L.control.scale({ imperial:true, metric:true, position:'bottomleft' }).addTo(map);
+
+// cursor coordinate readout
+map.on('mousemove', e=>{
+  document.getElementById('coords').textContent =
+    e.latlng.lat.toFixed(6) + ', ' + e.latlng.lng.toFixed(6);
+});
+
+/* =========================================================================
+   SECTION 3 — COLOR SCALES & THRESHOLDS
+   ========================================================================= */
+// semantic colors for exceedance modes
+const SEM = { yes:'#d7191c', no:'#1a9641', ns:'#9e9e9e' };
+// concentration ramp (blue-low -> red-high)
+const RAMP = ['#2c7bb6','#abd9e9','#ffffbf','#fdae61','#d7191c'];
+
+function lerpColor(a,b,t){
+  const ah=parseInt(a.slice(1),16), bh=parseInt(b.slice(1),16);
+  const ar=ah>>16, ag=(ah>>8)&255, ab=ah&255;
+  const br=bh>>16, bg=(bh>>8)&255, bb=bh&255;
+  const r=Math.round(ar+(br-ar)*t), g=Math.round(ag+(bg-ag)*t), bl=Math.round(ab+(bb-ab)*t);
+  return '#'+((1<<24)+(r<<16)+(g<<8)+bl).toString(16).slice(1);
+}
+// map normalized t in [0,1] onto the multi-stop ramp
+function rampColor(t){
+  if(t<=0) return RAMP[0];
+  if(t>=1) return RAMP[RAMP.length-1];
+  const seg = t*(RAMP.length-1);
+  const i = Math.floor(seg);
+  return lerpColor(RAMP[i], RAMP[i+1], seg-i);
+}
+
+// domain (min/max) of an analyte across sampled points, for the concentration ramp
+function analyteDomain(an){
+  const vals = DATA.features.map(f=>num(f.properties[an])).filter(v=>v!==null && v>0);
+  if(!vals.length) return [0,1];
+  return [Math.min(...vals), Math.max(...vals)];
+}
+// normalize a concentration to [0,1] (log-aware for Hg or when logScale on)
+function normConc(v, an){
+  if(!isNum(v) || v<=0) return null;
+  const [lo,hi] = analyteDomain(an);
+  if(hi<=lo) return 0.5;
+  const useLog = STATE.logScale && (an==='Hg');
+  if(useLog){
+    const llo=Math.log10(Math.max(lo,1e-6)), lhi=Math.log10(hi);
+    return (Math.log10(v)-llo)/(lhi-llo);
+  }
+  return (v-lo)/(hi-lo);
+}
+// ratio to active threshold; >1 = exceedance
+function ratioToThreshold(v, an){
+  const thr = CRITERIA[STATE.criterion][an];
+  if(!isNum(v) || !isNum(thr) || thr<=0) return null;
+  return v/thr;
+}
+
+// driver classification for "Driving COC" mode
+function driverColor(p){
+  const ex = STATE.criterion==='ROD' ? p.rod_exceed : p.pmb_exceed;
+  const dr = STATE.criterion==='ROD' ? p.rod_drivers : p.pmb_drivers;
+  if(ex==='NOT SAMPLED' || !p.sampled) return SEM.ns;
+  if(ex!=='YES' || !dr) return '#1a9641';                  // passes -> green
+  const hasHg = /Hg/.test(dr), hasAs = /As/.test(dr);
+  if(hasHg && hasAs) return '#7b3294';                      // both -> purple
+  if(hasHg) return '#d7191c';                               // Hg -> red
+  if(hasAs) return '#fdae61';                               // As -> orange
+  return '#2c7bb6';                                         // Sb/Tl only -> blue
+}
+
+// MASTER: fill color for a feature under the active color-by mode
+// `mode` overrides STATE.colorBy (used by the ROD↔PMB swipe panes)
+function fillFor(p, mode){
+  if(!p.sampled) return null;                  // hollow handled by renderer
+  switch(mode || STATE.colorBy){
+    case 'rod': return p.rod_exceed==='YES'?SEM.yes : p.rod_exceed==='NO'?SEM.no : SEM.ns;
+    case 'pmb': return p.pmb_exceed==='YES'?SEM.yes : p.pmb_exceed==='NO'?SEM.no : SEM.ns;
+    case 'round': return p.round===1 ? '#2b8cbe' : '#e6550d';
+    case 'driver': return driverColor(p);
+    case 'conc': {
+      const t = normConc(num(p[STATE.analyte]), STATE.analyte);
+      return t===null ? '#cccccc' : rampColor(t);
+    }
+    case 'ratio': {
+      const r = ratioToThreshold(num(p[STATE.analyte]), STATE.analyte);
+      if(r===null) return '#cccccc';
+      // 0..2x mapped onto ramp, clamp; 1x sits mid-ramp
+      return rampColor(Math.max(0,Math.min(1, r/2)));
+    }
+  }
+  return SEM.ns;
+}
+
+/* =========================================================================
+   SECTION 4 — SAMPLE LAYER (SVG markers, popups, labels)
+   ========================================================================= */
+const sampleLayer = L.layerGroup().addTo(map);
+const markerById = {};   // id -> marker
+
+function svgMarker(p, mode){
+  const fill = fillFor(p, mode);
+  const sampled = p.sampled;
+  const stroke = sampled ? '#222' : '#777';
+  const dash = sampled ? '' : 'stroke-dasharray="3,2"';
+  const fillCol = sampled ? (fill||'#cccccc') : 'none';     // not-sampled = hollow
+  const fillOp = sampled ? 0.92 : 0;
+  const sh = shapeOf(p);
+  const S = 22, c = S/2, r = 7;
+  let body='';
+  if(sh==='circle')      body = `<circle cx="${c}" cy="${c}" r="${r}" fill="${fillCol}" fill-opacity="${fillOp}" stroke="${stroke}" stroke-width="1.6" ${dash}/>`;
+  else if(sh==='square') body = `<rect x="${c-r}" y="${c-r}" width="${2*r}" height="${2*r}" fill="${fillCol}" fill-opacity="${fillOp}" stroke="${stroke}" stroke-width="1.6" ${dash}/>`;
+  else                   body = `<polygon points="${c},${c-r-1} ${c+r+1},${c+r} ${c-r-1},${c+r}" fill="${fillCol}" fill-opacity="${fillOp}" stroke="${stroke}" stroke-width="1.6" ${dash}/>`;
+  // deep-sample accent: small inner ring
+  const accent = hasDeep(p) ? `<circle cx="${c}" cy="${c}" r="2.4" fill="#111" stroke="#fff" stroke-width="0.8"/>` : '';
+  const html = `<svg width="${S}" height="${S}" viewBox="0 0 ${S} ${S}" style="overflow:visible">${body}${accent}</svg>`;
+  return L.divIcon({ className:'sample-icon', html, iconSize:[S,S], iconAnchor:[c,c] });
+}
+
+function popupHtml(p){
+  const ex = (v)=> v==='YES'?'<span class="exc-yes">YES</span>'
+                 : v==='NO'?'<span class="exc-no">NO</span>'
+                 : '<span class="exc-ns">'+(v||'—')+'</span>';
+  const fmt = v => isNum(v) ? v.toLocaleString() : '—';
+  const arow = an => {
+    const sh = p[an], dp = p[an+'_deep'];
+    return `<tr><td class="k">${an}</td><td>${fmt(sh)}${isNum(dp)?` <span style="color:#888">/ deep ${fmt(dp)}</span>`:''} ${UNITS}</td></tr>`;
+  };
+  let rows = ANALYTES.map(arow).join('');
+  const omRow = isNum(p.Hg_OM) ? `<tr><td class="k">Hg (OM)</td><td>${fmt(p.Hg_OM)} ${UNITS}${p.OM_effect?` · ${p.OM_effect}`:''}</td></tr>` : '';
+  const txt = [
+    `Sample ${p.id} (Round ${p.round})`,
+    p.coord_source?`Coord source: ${p.coord_source}`:'',
+    `Sampled: ${p.sampled?'yes':'no'}`,
+    ...ANALYTES.map(a=>`${a}: ${fmt(p[a])}${isNum(p[a+'_deep'])?` / deep ${fmt(p[a+'_deep'])}`:''} ${UNITS}`),
+    isNum(p.Hg_OM)?`Hg(OM): ${fmt(p.Hg_OM)} (${p.OM_effect||''})`:'',
+    `ROD: ${p.rod_exceed}${p.rod_drivers?` [${p.rod_drivers}]`:''}`,
+    `PMB: ${p.pmb_exceed||'—'}${p.pmb_drivers?` [${p.pmb_drivers}]`:''}`,
+    p.depth?`Depth: ${p.depth}`:'',
+    p.field_note?`Field note: ${p.field_note}`:'',
+    p.notes?`Notes: ${p.notes}`:'',
+    p.not_sampled_reason?`Not sampled: ${p.not_sampled_reason}`:''
+  ].filter(Boolean).join('\n');
+  return `<div class="popup">
+    <h4>${p.id} <span style="font-weight:400;color:#888">· Round ${p.round} · ${shapeOf(p)}</span></h4>
+    <table>
+      ${p.coord_source?`<tr><td class="k">Coord src</td><td>${p.coord_source}</td></tr>`:''}
+      <tr><td class="k">Sampled</td><td>${p.sampled?'Yes':'No'}</td></tr>
+      ${p.depth?`<tr><td class="k">Depth</td><td>${p.depth}</td></tr>`:''}
+      ${rows}${omRow}
+      <tr><td class="k">ROD</td><td>${ex(p.rod_exceed)}${p.rod_drivers?` <span style="color:#888">[${p.rod_drivers}]</span>`:''}</td></tr>
+      <tr><td class="k">PMB</td><td>${ex(p.pmb_exceed)}${p.pmb_drivers?` <span style="color:#888">[${p.pmb_drivers}]</span>`:''}</td></tr>
+      ${p.has_fd==='Yes'?'<tr><td class="k">Field dup</td><td>Yes</td></tr>':''}
+      ${p.field_note?`<tr><td class="k">Field note</td><td>${p.field_note}</td></tr>`:''}
+      ${p.notes?`<tr><td class="k">Notes</td><td>${p.notes}</td></tr>`:''}
+      ${p.not_sampled_reason?`<tr><td class="k">Not sampled</td><td>${p.not_sampled_reason}</td></tr>`:''}
+    </table>
+    <button class="btn copybtn" onclick='navigator.clipboard&&navigator.clipboard.writeText(${JSON.stringify(txt)})'>Copy details</button>
+  </div>`;
+}
+
+// ---- filter predicate (SECTION 8 uses STATE.filters) --------------------
+function passesFilter(p){
+  const f = STATE.filters;
+  if(f.round!=='both' && String(p.round)!==f.round) return false;
+  if(f.sampled==='yes' && !p.sampled) return false;
+  if(f.sampled==='no'  &&  p.sampled) return false;
+  if(f.exceed==='rod'  && p.rod_exceed!=='YES') return false;
+  if(f.exceed==='pmb'  && p.pmb_exceed!=='YES') return false;
+  if(f.exceed==='clean'&& !(p.rod_exceed==='NO' && p.pmb_exceed==='NO')) return false;
+  if(f.depth==='surface' && hasDeep(p)) return false;
+  if(f.depth==='deep'    && !hasDeep(p)) return false;
+  if(f.thr>0){ const v=num(p[STATE.analyte]); if(v===null || v<=f.thr) return false; }
+  return true;
+}
+// features currently passing the filter (used by stats, heat, IDW, CSV)
+function filteredFeatures(){ return DATA.features.filter(f=>passesFilter(f.properties)); }
+
+function makeMarker(p, lon, lat, opts){
+  opts = opts || {};
+  const m = L.marker([lat,lon], { icon:svgMarker(p, opts.mode), pane:opts.pane||'markerPane' });
+  m.featureProps = p;
+  m.bindPopup(()=>popupHtml(p), { maxWidth:320, minWidth:230 });
+  if(STATE.showLabels && !opts.noLabel){
+    m.bindTooltip(p.id, { permanent:true, direction:'right', className:'sample-label', offset:[8,0] });
+  }
+  return m;
+}
+
+// dispatcher: render points in the active mode (normal | cluster | swipe — SOTA)
+function buildMarkers(){
+  sampleLayer.clearLayers();
+  for(const k in markerById) delete markerById[k];
+  if(window.STATE_pointMode === 'swipe'){ buildSwipe(); return; }
+  if(window.STATE_pointMode === 'cluster'){ buildCluster(); return; }
+  if(!STATE.showPoints) return;
+  DATA.features.forEach(f=>{
+    const p = f.properties;
+    if(!passesFilter(p)) return;
+    const [lon,lat] = f.geometry.coordinates;
+    const m = makeMarker(p, lon, lat);
+    m.addTo(sampleLayer);
+    markerById[p.id] = m;
+  });
+  if(window.refreshSnapTargets) window.refreshSnapTargets();
+}
+
+function refreshMarkers(){ buildMarkers(); }
+
+/* =========================================================================
+   SECTION 5 — DYNAMIC LEGEND
+   ========================================================================= */
+function shapeGlyph(){
+  return `<div class="legend-note">
+    <div><span class="legend-shape">●</span> Round 1 &nbsp; <span class="legend-shape">■</span> Round 2 &nbsp; <span class="legend-shape">▲</span> Opportunistic (OS)</div>
+    <div><span class="legend-shape">◌</span> Hollow/dashed = not sampled &nbsp; <span class="legend-shape">⦿</span> dot = has deep sample</div>
+  </div>`;
+}
+function swatch(c){ return `<span class="legend-swatch" style="background:${c}"></span>`; }
+
+function buildLegend(){
+  const body = document.getElementById('legendBody');
+  const an = STATE.analyte, crit = STATE.criterion;
+  let html = '';
+  if(STATE.colorBy==='rod' || STATE.colorBy==='pmb'){
+    const set = STATE.colorBy==='rod' ? 'ROD' : 'PMB';
+    html = `<div style="font-weight:600;margin-bottom:4px">${set} exceedance</div>
+      <div class="legend-row">${swatch(SEM.yes)} Exceeds ${set}</div>
+      <div class="legend-row">${swatch(SEM.no)} Below ${set}</div>
+      <div class="legend-row">${swatch(SEM.ns)} Not sampled</div>`;
+  } else if(STATE.colorBy==='round'){
+    html = `<div style="font-weight:600;margin-bottom:4px">Sampling round</div>
+      <div class="legend-row">${swatch('#2b8cbe')} Round 1</div>
+      <div class="legend-row">${swatch('#e6550d')} Round 2</div>`;
+  } else if(STATE.colorBy==='driver'){
+    html = `<div style="font-weight:600;margin-bottom:4px">Driving COC (${crit})</div>
+      <div class="legend-row">${swatch('#d7191c')} Hg drives</div>
+      <div class="legend-row">${swatch('#fdae61')} As drives</div>
+      <div class="legend-row">${swatch('#7b3294')} Hg + As</div>
+      <div class="legend-row">${swatch('#2c7bb6')} Sb/Tl only</div>
+      <div class="legend-row">${swatch('#1a9641')} Passes</div>
+      <div class="legend-row">${swatch(SEM.ns)} Not sampled</div>`;
+  } else if(STATE.colorBy==='conc'){
+    const [lo,hi] = analyteDomain(an);
+    const grad = `linear-gradient(to right, ${RAMP.join(',')})`;
+    const useLog = STATE.logScale && an==='Hg';
+    html = `<div style="font-weight:600;margin-bottom:4px">${ANALYTE_LABEL[an]} ${UNITS}${useLog?' · log':''}</div>
+      <div class="legend-ramp" style="background:${grad}"></div>
+      <div class="legend-scale"><span>${lo}</span><span>${hi}</span></div>
+      <div class="legend-row" style="margin-top:5px">${swatch('#cccccc')} no data</div>`;
+  } else if(STATE.colorBy==='ratio'){
+    const thr = CRITERIA[crit][an];
+    const grad = `linear-gradient(to right, ${RAMP.join(',')})`;
+    html = `<div style="font-weight:600;margin-bottom:4px">${an} ÷ ${crit} (${thr} ${UNITS})</div>
+      <div class="legend-ramp" style="background:${grad}"></div>
+      <div class="legend-scale"><span>0×</span><span>1× (line)</span><span>≥2×</span></div>
+      <div class="legend-row" style="margin-top:5px">${swatch('#cccccc')} no data</div>`;
+  }
+  body.innerHTML = html + shapeGlyph();
+}
+
+/* =========================================================================
+   SECTION 6 — UI WIRING (Phase 1)
+   ========================================================================= */
+function syncControlVisibility(){
+  const needAnalyte = ['conc','ratio'].includes(STATE.colorBy);
+  const needCrit = ['ratio','driver'].includes(STATE.colorBy);
+  document.getElementById('analyteWrap').style.display = needAnalyte ? '' : 'none';
+  document.getElementById('criterionWrap').style.display = needCrit ? '' : 'none';
+}
+function applyDisplay(){
+  syncControlVisibility();
+  refreshMarkers();
+  buildLegend();
+}
+
+document.getElementById('colorBy').addEventListener('change', e=>{ STATE.colorBy=e.target.value; applyDisplay(); });
+document.getElementById('analyte').addEventListener('change', e=>{ STATE.analyte=e.target.value; applyDisplay(); });
+document.getElementById('criterion').addEventListener('change', e=>{ STATE.criterion=e.target.value; applyDisplay(); });
+document.getElementById('showLabels').addEventListener('change', e=>{ STATE.showLabels=e.target.checked; refreshMarkers(); });
+document.getElementById('logScale').addEventListener('change', e=>{ STATE.logScale=e.target.checked; applyDisplay(); });
+
+// panel collapse
+document.getElementById('panelToggle').addEventListener('click', ()=>{
+  const panel=document.getElementById('panel');
+  panel.classList.toggle('collapsed');
+  document.body.classList.toggle('with-panel', !panel.classList.contains('collapsed'));
+  document.getElementById('panelToggle').textContent = panel.classList.contains('collapsed') ? '›' : '‹';
+  setTimeout(()=>map.invalidateSize(), 220);
+});
+// section collapse
+document.querySelectorAll('.section > h2').forEach(h=>{
+  h.addEventListener('click', ()=>h.parentElement.classList.toggle('closed'));
+});
+// legend collapse
+document.getElementById('legendHead').addEventListener('click', ()=>{
+  document.getElementById('legend').classList.toggle('closed');
+});
+
+/* =========================================================================
+   SECTION 7 — FILTERS & LIVE STATS
+   ========================================================================= */
+STATE.layers = { heat:false, idw:false, grid:false };
+const $ = id => document.getElementById(id);
+
+function readFilters(){
+  STATE.filters.round   = $('fRound').value;
+  STATE.filters.sampled = $('fSampled').value;
+  STATE.filters.exceed  = $('fExceed').value;
+  STATE.filters.depth   = $('fDepth').value;
+  STATE.filters.thr     = +$('fThr').value;
+}
+function updateThrSlider(){
+  const [,hi] = analyteDomain(STATE.analyte);
+  $('fThr').max = Math.ceil(hi);
+  if(+$('fThr').value > hi){ $('fThr').value = 0; STATE.filters.thr = 0; }
+  $('fThrAnalyte').textContent = STATE.analyte;
+  $('fThrV').textContent = $('fThr').value;
+}
+function computeStats(feats){
+  const sampled = feats.filter(f=>f.properties.sampled);
+  const st = { n:feats.length, nSampled:sampled.length,
+    rod: feats.filter(f=>f.properties.rod_exceed==='YES').length,
+    pmb: feats.filter(f=>f.properties.pmb_exceed==='YES').length, perA:{} };
+  ANALYTES.forEach(an=>{
+    const vals = sampled.map(f=>num(f.properties[an])).filter(v=>v!==null).sort((a,b)=>a-b);
+    if(!vals.length){ st.perA[an]=null; return; }
+    const sum = vals.reduce((a,b)=>a+b,0);
+    const med = vals.length%2 ? vals[(vals.length-1)/2] : (vals[vals.length/2-1]+vals[vals.length/2])/2;
+    const thr = CRITERIA[STATE.criterion][an];
+    const exc = vals.filter(v=>v>thr).length;
+    st.perA[an] = { min:vals[0], mean:sum/vals.length, median:med, max:vals[vals.length-1], pctExc:100*exc/vals.length };
+  });
+  return st;
+}
+function renderStats(){
+  const st = computeStats(filteredFeatures());
+  let h = `<div class="statline"><span>Showing</span><b>${st.n}</b></div>
+    <div class="statline"><span>Sampled</span><b>${st.nSampled}</b></div>
+    <div class="statline"><span>ROD exceedances</span><b style="color:var(--red)">${st.rod}</b></div>
+    <div class="statline"><span>PMB exceedances</span><b style="color:var(--red)">${st.pmb}</b></div>`;
+  h += `<table class="stats-table"><tr><th>${UNITS}</th><th>min</th><th>mean</th><th>med</th><th>max</th><th>%&gt;${STATE.criterion}</th></tr>`;
+  ANALYTES.forEach(an=>{
+    const a = st.perA[an];
+    h += a ? `<tr><td class="an">${an}</td><td>${a.min}</td><td>${a.mean.toFixed(1)}</td><td>${a.median}</td><td>${a.max}</td><td>${a.pctExc.toFixed(0)}%</td></tr>`
+           : `<tr><td class="an">${an}</td><td colspan="5" style="text-align:center;color:#999">no data</td></tr>`;
+  });
+  $('statsBody').innerHTML = h + '</table>';
+}
+function applyFilters(){
+  readFilters(); updateThrSlider();
+  buildMarkers(); renderStats(); updateHeat(); updateIDW();
+  scheduleAutosave();
+}
+
+/* =========================================================================
+   SECTION 8 — HEAT MAP (Leaflet.heat, analyte-weighted)
+   ========================================================================= */
+let heatLayer = null;
+function heatPoints(){
+  const an = $('heatAnalyte').value;
+  const useLog = $('heatLog').checked && an==='Hg';
+  const [lo,hi] = analyteDomain(an);
+  return filteredFeatures().map(f=>{
+    const v = num(f.properties[an]); if(v===null || v<=0) return null;
+    let t;
+    if(useLog){ const llo=Math.log10(Math.max(lo,1e-6)), lhi=Math.log10(hi); t=(Math.log10(v)-llo)/((lhi-llo)||1); }
+    else t = (v-lo)/((hi-lo)||1);
+    return [f.geometry.coordinates[1], f.geometry.coordinates[0], Math.max(0.05,Math.min(1,t))];
+  }).filter(Boolean);
+}
+function updateHeat(){
+  if(!STATE.layers.heat){ if(heatLayer){ map.removeLayer(heatLayer); heatLayer=null; } return; }
+  const opts = { radius:+$('heatRadius').value, blur:+$('heatBlur').value, max:+$('heatMax').value, minOpacity:0.05 };
+  if(!heatLayer){ heatLayer = L.heatLayer(heatPoints(), opts).addTo(map); }
+  else { heatLayer.setLatLngs(heatPoints()); heatLayer.setOptions(opts); }
+  if(heatLayer._canvas) heatLayer._canvas.style.opacity = $('heatOp').value;
+}
+
+/* =========================================================================
+   SECTION 9 — IDW INTERPOLATION SURFACE (Turf hull clip + canvas overlay)
+   ========================================================================= */
+let idwOverlay = null;
+function hexToRgb(h){ const n=parseInt(h.slice(1),16); return [n>>16,(n>>8)&255,n&255]; }
+function buildIDW(){
+  const an = $('idwAnalyte').value;
+  const pts = filteredFeatures().filter(f=>num(f.properties[an])!==null);
+  if(pts.length < 3) return null;
+  const fc = turf.featureCollection(pts.map(f=>turf.point(f.geometry.coordinates,{v:f.properties[an]})));
+  let hull; try{ hull = turf.convex(fc); }catch(e){ hull=null; }
+  if(!hull) return null;
+  const [w,s,e,n] = turf.bbox(hull);
+  const res = +$('idwRes').value, pow = +$('idwPow').value;
+  const spanX = (e-w)||1e-9, spanY = (n-s)||1e-9;
+  let W,H;
+  if(spanX>=spanY){ W=res; H=Math.max(8,Math.round(res*spanY/spanX)); }
+  else { H=res; W=Math.max(8,Math.round(res*spanX/spanY)); }
+  const useLog = an==='Hg' && STATE.logScale;
+  const [lo,hi] = analyteDomain(an);
+  const llo=Math.log10(Math.max(lo,1e-6)), lhi=Math.log10(hi);
+  const samples = pts.map(f=>({x:f.geometry.coordinates[0], y:f.geometry.coordinates[1], v:f.properties[an]}));
+  const cv = document.createElement('canvas'); cv.width=W; cv.height=H;
+  const ctx = cv.getContext('2d'); const img = ctx.createImageData(W,H);
+  for(let row=0; row<H; row++){
+    const lat = n - ((row+0.5)/H)*(n-s);
+    for(let col=0; col<W; col++){
+      const lon = w + ((col+0.5)/W)*(e-w);
+      const idx = (row*W+col)*4;
+      if(!turf.booleanPointInPolygon(turf.point([lon,lat]), hull)){ img.data[idx+3]=0; continue; }
+      let nu=0, de=0, exact=null;
+      for(const sp of samples){
+        const dx=lon-sp.x, dy=lat-sp.y, d2=dx*dx+dy*dy;
+        if(d2<1e-12){ exact=sp.v; break; }
+        const wgt = 1/Math.pow(d2, pow/2);
+        nu += wgt*sp.v; de += wgt;
+      }
+      const val = exact!==null ? exact : nu/de;
+      let t = useLog ? (Math.log10(Math.max(val,1e-6))-llo)/((lhi-llo)||1) : (val-lo)/((hi-lo)||1);
+      t = Math.max(0,Math.min(1,t));
+      const rgb = hexToRgb(rampColor(t));
+      img.data[idx]=rgb[0]; img.data[idx+1]=rgb[1]; img.data[idx+2]=rgb[2]; img.data[idx+3]=255;
+    }
+  }
+  ctx.putImageData(img,0,0);
+  return { url:cv.toDataURL(), bounds:[[s,w],[n,e]] };
+}
+function updateIDW(){
+  if(idwOverlay){ map.removeLayer(idwOverlay); idwOverlay=null; }
+  if(!STATE.layers.idw) return;
+  const r = buildIDW(); if(!r) return;
+  idwOverlay = L.imageOverlay(r.url, r.bounds, { opacity:+$('idwOp').value, interactive:false }).addTo(map);
+}
+
+/* =========================================================================
+   SECTION 10 — DATA-GAP GRID
+   ========================================================================= */
+let gridLayer = null;
+function updateGrid(){
+  if(gridLayer){ map.removeLayer(gridLayer); gridLayer=null; }
+  if(!STATE.layers.grid) return;
+  const cell = +$('gridSize').value;                      // ft
+  const samp = DATA.features.filter(f=>f.properties.sampled).map(f=>f.geometry.coordinates);
+  const lats = DATA.features.map(f=>f.geometry.coordinates[1]);
+  const lons = DATA.features.map(f=>f.geometry.coordinates[0]);
+  const s=Math.min(...lats), n=Math.max(...lats), w=Math.min(...lons), e=Math.max(...lons);
+  const latFt=364000, lonFt=364000*Math.cos(s*Math.PI/180);
+  const dLat=cell/latFt, dLon=cell/lonFt;
+  gridLayer = L.layerGroup();
+  for(let lat=s; lat<n+dLat; lat+=dLat){
+    for(let lon=w; lon<e+dLon; lon+=dLon){
+      const cnt = samp.filter(c=>c[0]>=lon && c[0]<lon+dLon && c[1]>=lat && c[1]<lat+dLat).length;
+      const col = cnt===0 ? '#d7191c' : cnt<=2 ? '#fdae61' : '#1a9641';
+      L.rectangle([[lat,lon],[lat+dLat,lon+dLon]],
+        { color:'#666', weight:0.5, fillColor:col, fillOpacity:0.22, interactive:false }).addTo(gridLayer);
+    }
+  }
+  gridLayer.addTo(map);
+}
+
+/* =========================================================================
+   SECTION 11 — DRAWING, MEASUREMENT & VOLUME (Leaflet-Geoman + Turf)
+   ========================================================================= */
+const drawnItems = L.featureGroup().addTo(map);
+window.refreshSnapTargets = function(){};   // sample markers on map are auto-snap targets
+
+map.pm.addControls({
+  position:'topright',
+  drawCircleMarker:false, drawText:true,
+  drawMarker:true, drawPolyline:true, drawPolygon:true, drawRectangle:true, drawCircle:true,
+  editMode:true, dragMode:true, removalMode:true, rotateMode:false, cutPolygon:false
+});
+map.pm.setGlobalOptions({ snappable:true, snapDistance:18, continueDrawing:false });
+
+function applyShapeStyle(layer){
+  if(layer.setStyle){
+    layer.setStyle({
+      color:$('styleStroke').value, weight:+$('styleWeight').value,
+      fillColor:$('styleFill').value, fillOpacity:+$('styleFillOp').value,
+      dashArray:$('styleDash').checked ? '6,4' : null
+    });
+  }
+}
+function areaInfo(m2){
+  const ft2=m2*10.7639104, ac=m2/4046.8564224, depth=parseFloat($('digDepth').value)||0;
+  const cy = depth>0 ? ft2*depth/27 : null;
+  return `Area: ${ft2.toLocaleString(undefined,{maximumFractionDigits:0})} ft² · ${ac.toFixed(3)} ac · ${m2.toLocaleString(undefined,{maximumFractionDigits:0})} m²`
+       + (cy!==null ? `<br>Volume @ ${depth} ft = <b>${cy.toLocaleString(undefined,{maximumFractionDigits:0})} yd³</b>` : '');
+}
+function ptStatsHtml(poly){
+  const inside = DATA.features.filter(f=>f.properties.sampled &&
+                  turf.booleanPointInPolygon(turf.point(f.geometry.coordinates), poly));
+  if(!inside.length) return `<br><i>0 samples inside</i>`;
+  let s = `<br><b>${inside.length}</b> sample(s) inside:`;
+  ANALYTES.forEach(an=>{
+    const vals = inside.map(f=>num(f.properties[an])).filter(v=>v!==null);
+    if(vals.length){
+      const mean=(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1);
+      s += `<br>&nbsp;${an}: ${Math.min(...vals)} / ${mean} / ${Math.max(...vals)} (min/mean/max)`;
+    }
+  });
+  return s;
+}
+function shapeStats(layer){
+  let poly=null, html='', kind='';
+  if(layer instanceof L.Circle){
+    kind='Circle';
+    const r=layer.getRadius(), c=layer.getLatLng();
+    poly=turf.circle([c.lng,c.lat], r/1000, {units:'kilometers',steps:64});
+    html=`<b>Circle</b> · r=${(r*3.28084).toFixed(0)} ft (${r.toFixed(0)} m)<br>${areaInfo(Math.PI*r*r)}` + ptStatsHtml(poly);
+  } else if(layer instanceof L.Polygon){
+    kind='Polygon';
+    const gj=layer.toGeoJSON(); poly=gj;
+    html=`<b>Polygon</b><br>${areaInfo(turf.area(gj))}` + ptStatsHtml(poly);
+  } else if(layer instanceof L.Polyline){
+    kind='Line';
+    const km=turf.length(layer.toGeoJSON(),{units:'kilometers'});
+    html=`<b>Line</b> · ${(km*3280.84).toFixed(1)} ft (${(km*1000).toFixed(1)} m)`;
+  } else { kind='Annotation'; html='<b>Annotation</b>'; }
+  return { kind, html, poly };
+}
+function attachShapeInfo(layer){
+  const info = shapeStats(layer);
+  if(info.kind!=='Annotation'){
+    if(layer.getPopup()) layer.setPopupContent(info.html); else layer.bindPopup(info.html);
+    $('measureOut').innerHTML = info.html;
+  }
+}
+map.on('pm:create', e=>{
+  const layer = e.layer;
+  applyShapeStyle(layer);
+  drawnItems.addLayer(layer);
+  attachShapeInfo(layer);
+  layer.on('pm:edit pm:dragend pm:markerdragend pm:update', ()=>{ attachShapeInfo(layer); scheduleAutosave(); });
+  scheduleAutosave();
+});
+map.on('pm:remove', ()=>scheduleAutosave());
+
+function shapesToGeoJSON(){
+  const fc = { type:'FeatureCollection', features:[] };
+  drawnItems.eachLayer(l=>{
+    let gj;
+    if(l instanceof L.Circle){ gj=l.toGeoJSON(); gj.properties=gj.properties||{}; gj.properties.radius=l.getRadius(); }
+    else gj = l.toGeoJSON();
+    gj.properties = gj.properties || {};
+    if(l.options) gj.properties.style = { color:l.options.color, weight:l.options.weight,
+      fillColor:l.options.fillColor, fillOpacity:l.options.fillOpacity, dashArray:l.options.dashArray };
+    if(l.pm && l.pm._textMarker && l.getTooltip) gj.properties.text = l.getTooltip() ? l.getTooltip().getContent() : '';
+    fc.features.push(gj);
+  });
+  return fc;
+}
+function loadShapesGeoJSON(gj){
+  if(!gj || !gj.features) return;
+  gj.features.forEach(ft=>{
+    let layer; const pr=ft.properties||{};
+    if(ft.geometry.type==='Point' && pr.radius){
+      layer = L.circle([ft.geometry.coordinates[1],ft.geometry.coordinates[0]], { radius:pr.radius });
+    } else if(ft.geometry.type==='Point'){
+      layer = L.marker([ft.geometry.coordinates[1],ft.geometry.coordinates[0]]);
+      if(pr.text) layer.bindTooltip(pr.text,{permanent:true,direction:'center',className:'sample-label'});
+    } else {
+      layer = L.geoJSON(ft).getLayers()[0];
+    }
+    if(layer.setStyle && pr.style) layer.setStyle(pr.style);
+    drawnItems.addLayer(layer);
+    attachShapeInfo(layer);
+    layer.on('pm:edit pm:dragend pm:update', ()=>{ attachShapeInfo(layer); scheduleAutosave(); });
+  });
+}
+$('clearDraw').addEventListener('click', ()=>{ drawnItems.clearLayers(); $('measureOut').innerHTML=''; scheduleAutosave(); });
+$('digDepth').addEventListener('change', ()=>{ drawnItems.eachLayer(l=>attachShapeInfo(l)); });
+
+/* =========================================================================
+   SECTION 12 — OM vs SHALLOW Hg SCATTER (Chart.js)
+   ========================================================================= */
+let omChart=null, omBuilt=false;
+function buildOmChart(){
+  const r2 = DATA.features.filter(f=>f.properties.round===2 && isNum(f.properties.Hg_OM) && isNum(f.properties.Hg));
+  if(!r2.length) return;
+  const colByEff = {'OM higher':'#d7191c','OM lower':'#2c7bb6','~equal':'#9e9e9e'};
+  const groups={};
+  r2.forEach(f=>{ const k=f.properties.OM_effect||'?'; (groups[k]=groups[k]||[]).push({x:f.properties.Hg,y:f.properties.Hg_OM,id:f.properties.id}); });
+  const ds = Object.keys(groups).map(k=>({ label:k, data:groups[k], backgroundColor:colByEff[k]||'#666', pointRadius:4 }));
+  const maxV = Math.max(...r2.map(f=>Math.max(f.properties.Hg,f.properties.Hg_OM)));
+  ds.push({ label:'1:1', type:'line', data:[{x:1,y:1},{x:maxV,y:maxV}], borderColor:'#222', borderDash:[5,4], pointRadius:0, fill:false });
+  if(omChart) omChart.destroy();
+  omChart = new Chart($('omChart'), { type:'scatter', data:{datasets:ds}, options:{
+    responsive:true, animation:false,
+    scales:{ x:{type:'logarithmic',title:{display:true,text:'Shallow soil Hg (mg/kg)'}},
+             y:{type:'logarithmic',title:{display:true,text:'OM Hg (mg/kg)'}} },
+    plugins:{ legend:{labels:{boxWidth:12,font:{size:10}}},
+      tooltip:{callbacks:{label:c=>c.raw && c.raw.id ? `${c.raw.id}: soil ${c.raw.x}, OM ${c.raw.y}` : ''}} }
+  }});
+  omBuilt=true;
+}
+
+/* =========================================================================
+   SECTION 13 — EXPORT / IMPORT
+   ========================================================================= */
+function download(name, content, mime){
+  const b = new Blob([content], {type:mime||'text/plain'});
+  const u = URL.createObjectURL(b);
+  const a = document.createElement('a'); a.href=u; a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(u), 1000);
+}
+function exportPng(){
+  const el = $('map'); const r = el.getBoundingClientRect();
+  const msg = $('sessionMsg'); msg.textContent='Rendering figure…';
+  html2canvas(document.body, {
+    useCORS:true, allowTaint:false, backgroundColor:'#ffffff', scale:2, logging:false,
+    x:r.left, y:r.top, width:r.width, height:r.height,
+    scrollX:0, scrollY:0,
+    windowWidth:document.documentElement.clientWidth, windowHeight:document.documentElement.clientHeight,
+    ignoreElements: n => ['panel','panelToggle','topbar','coords'].includes(n.id)
+  }).then(canvas=>{
+    canvas.toBlob(b=>{ download('abp_figure.png', b, 'image/png'); msg.textContent='Figure exported.'; });
+  }).catch(err=>{ msg.textContent='PNG export failed (tile CORS?): '+err.message; });
+}
+function exportShapes(){
+  const fc = shapesToGeoJSON();
+  if(!fc.features.length){ $('sessionMsg').textContent='No shapes to export.'; return; }
+  download('abp_shapes.geojson', JSON.stringify(fc,null,2), 'application/geo+json');
+}
+function exportCsv(){
+  const feats = filteredFeatures();
+  const cols = ['id','round','sampled','lat','lon','Hg','As','Sb','Tl','Hg_deep','As_deep','Sb_deep','Tl_deep','Hg_OM','OM_effect','depth','coord_source','rod_exceed','rod_drivers','pmb_exceed','pmb_drivers'];
+  const esc = v => v==null ? '' : /[",\n]/.test(String(v)) ? '"'+String(v).replace(/"/g,'""')+'"' : String(v);
+  const rows = [cols.join(',')];
+  feats.forEach(f=>{ const p=f.properties; const o={...p, lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0]};
+    rows.push(cols.map(c=>esc(o[c])).join(',')); });
+  download('abp_points_filtered.csv', rows.join('\n'), 'text/csv');
+}
+function handleImport(file){
+  const rd = new FileReader();
+  rd.onload = ()=>{
+    let gj; try{ gj=JSON.parse(rd.result); }catch(e){ alert('Invalid JSON file.'); return; }
+    const looksData = gj.metadata || (gj.features && gj.features.some(f=>
+      f.geometry && f.geometry.type==='Point' && f.properties && ('rod_exceed' in f.properties || 'Hg' in f.properties)));
+    if(looksData && confirm('This looks like sample DATA. Load it (replaces current 94 points)?')){
+      DATA.features.length = 0; gj.features.forEach(f=>DATA.features.push(f));
+      if(gj.metadata && gj.metadata.criteria) Object.assign(DATA.metadata.criteria, gj.metadata.criteria);
+      updateThrSlider(); buildMarkers(); buildLegend(); renderStats(); updateHeat(); updateIDW(); updateGrid();
+      buildOmChart(); fitToData();
+      $('sessionMsg').textContent='Loaded '+DATA.features.length+' features.';
+    } else {
+      loadShapesGeoJSON(gj); $('sessionMsg').textContent='Loaded shapes from file.'; scheduleAutosave();
+    }
+  };
+  rd.readAsText(file);
+}
+
+/* =========================================================================
+   SECTION 14 — SESSION PERSISTENCE (localStorage)
+   ========================================================================= */
+const LS_KEY = 'abp_session_v1';
+let autosaveTimer=null;
+function scheduleAutosave(){
+  if(!$('autoSave') || !$('autoSave').checked) return;
+  clearTimeout(autosaveTimer); autosaveTimer=setTimeout(saveSession, 700);
+}
+function sessionData(){
+  return {
+    colorBy:STATE.colorBy, analyte:STATE.analyte, criterion:STATE.criterion,
+    showLabels:STATE.showLabels, logScale:STATE.logScale, showPoints:STATE.showPoints,
+    filters:STATE.filters, layers:STATE.layers,
+    base:$('baseSelect').value,
+    titleMain:document.querySelector('.tb-title').innerText,
+    titleSub:document.querySelector('.tb-sub').innerText,
+    showTitleBlock:$('showTitleBlock').checked,
+    shapes:shapesToGeoJSON()
+  };
+}
+function saveSession(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(sessionData()));
+    $('sessionMsg').textContent='Saved '+new Date().toLocaleTimeString(); }
+  catch(e){ $('sessionMsg').textContent='Save failed: '+e.message; }
+}
+function loadSession(silent){
+  let raw; try{ raw=localStorage.getItem(LS_KEY); }catch(e){ return; }
+  if(!raw){ if(!silent) $('sessionMsg').textContent='No saved session found.'; return; }
+  let d; try{ d=JSON.parse(raw); }catch(e){ return; }
+  const set=(id,v)=>{ const el=$(id); if(el!=null && v!=null){ if(el.type==='checkbox') el.checked=v; else el.value=v; } };
+  STATE.colorBy=d.colorBy||STATE.colorBy; set('colorBy',STATE.colorBy);
+  STATE.analyte=d.analyte||STATE.analyte; set('analyte',STATE.analyte);
+  STATE.criterion=d.criterion||STATE.criterion; set('criterion',STATE.criterion);
+  STATE.showLabels=!!d.showLabels; set('showLabels',STATE.showLabels);
+  STATE.logScale=d.logScale!==false; set('logScale',STATE.logScale);
+  STATE.showPoints=d.showPoints!==false; set('togglePoints',STATE.showPoints);
+  if(d.filters) Object.assign(STATE.filters,d.filters);
+  set('fRound',STATE.filters.round); set('fSampled',STATE.filters.sampled);
+  set('fExceed',STATE.filters.exceed); set('fDepth',STATE.filters.depth);
+  set('fThr',STATE.filters.thr);
+  if(d.layers) Object.assign(STATE.layers,d.layers);
+  set('toggleHeat',STATE.layers.heat); set('toggleIDW',STATE.layers.idw); set('toggleGrid',STATE.layers.grid);
+  $('heatCtl').style.display=STATE.layers.heat?'':'none';
+  $('idwCtl').style.display=STATE.layers.idw?'':'none';
+  $('gridCtl').style.display=STATE.layers.grid?'':'none';
+  if(d.base){ set('baseSelect',d.base); $('baseSelect').dispatchEvent(new Event('change')); }
+  if(d.titleMain) document.querySelector('.tb-title').innerText=d.titleMain;
+  if(d.titleSub) document.querySelector('.tb-sub').innerText=d.titleSub;
+  if(d.showTitleBlock){ $('showTitleBlock').checked=true; $('titleBlock').classList.add('show'); }
+  drawnItems.clearLayers(); loadShapesGeoJSON(d.shapes);
+  syncControlVisibility(); applyDisplay(); applyFilters(); updateGrid();
+  if(!silent) $('sessionMsg').textContent='Session loaded.';
+}
+
+/* =========================================================================
+   SECTION 15 — UI WIRING (Phase 2/3 controls)
+   ========================================================================= */
+// layer toggles + their control panels
+$('togglePoints').addEventListener('change', e=>{ STATE.showPoints=e.target.checked; buildMarkers(); scheduleAutosave(); });
+$('toggleHeat').addEventListener('change', e=>{ STATE.layers.heat=e.target.checked; $('heatCtl').style.display=e.target.checked?'':'none'; updateHeat(); scheduleAutosave(); });
+$('toggleIDW').addEventListener('change', e=>{ STATE.layers.idw=e.target.checked; $('idwCtl').style.display=e.target.checked?'':'none'; updateIDW(); scheduleAutosave(); });
+$('toggleGrid').addEventListener('change', e=>{ STATE.layers.grid=e.target.checked; $('gridCtl').style.display=e.target.checked?'':'none'; updateGrid(); scheduleAutosave(); });
+// heat controls
+['heatRadius','heatBlur','heatMax','heatOp'].forEach(id=>$(id).addEventListener('input', e=>{
+  const v=$(id+'V'); if(v) v.textContent=e.target.value; updateHeat();
+}));
+$('heatAnalyte').addEventListener('change', updateHeat);
+$('heatLog').addEventListener('change', updateHeat);
+// idw controls
+['idwRes','idwPow','idwOp'].forEach(id=>$(id).addEventListener('input', e=>{ const v=$(id+'V'); if(v) v.textContent=e.target.value; }));
+$('idwOp').addEventListener('input', updateIDW);
+$('idwRefresh').addEventListener('click', updateIDW);
+$('idwAnalyte').addEventListener('change', updateIDW);
+$('gridSize').addEventListener('change', updateGrid);
+// filters
+['fRound','fSampled','fExceed','fDepth'].forEach(id=>$(id).addEventListener('change', applyFilters));
+$('fThr').addEventListener('input', ()=>{ $('fThrV').textContent=$('fThr').value; applyFilters(); });
+$('resetFilters').addEventListener('click', ()=>{
+  $('fRound').value='both'; $('fSampled').value='all'; $('fExceed').value='all'; $('fDepth').value='all'; $('fThr').value=0;
+  applyFilters();
+});
+$('searchBtn').addEventListener('click', doSearch);
+$('searchId').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
+function doSearch(){
+  const id=$('searchId').value.trim().toUpperCase();
+  const f=DATA.features.find(f=>String(f.properties.id).toUpperCase()===id);
+  if(!f){ $('sessionMsg').textContent='ID not found: '+id; return; }
+  const ll=[f.geometry.coordinates[1],f.geometry.coordinates[0]];
+  map.flyTo(ll, 20, {duration:0.8});
+  const m=markerById[f.properties.id]; if(m) setTimeout(()=>m.openPopup(),850);
+}
+// export/import
+$('exportPng').addEventListener('click', exportPng);
+$('exportShapes').addEventListener('click', exportShapes);
+$('exportCsv').addEventListener('click', exportCsv);
+$('importFile').addEventListener('change', e=>{ if(e.target.files[0]) handleImport(e.target.files[0]); e.target.value=''; });
+// title block
+$('showTitleBlock').addEventListener('change', e=>{ $('titleBlock').classList.toggle('show', e.target.checked); scheduleAutosave(); });
+document.querySelectorAll('.tb-title,.tb-sub').forEach(el=>el.addEventListener('input', scheduleAutosave));
+// session
+$('saveSession').addEventListener('click', saveSession);
+$('loadSession').addEventListener('click', ()=>loadSession(false));
+// build OM chart lazily when its section is first opened
+document.querySelector('[data-sec="om"] > h2').addEventListener('click', ()=>{
+  const sec=document.querySelector('[data-sec="om"]');
+  if(!sec.classList.contains('closed') && !omBuilt) setTimeout(buildOmChart,60);
+});
+
+// extend applyDisplay (Phase 1 version) to refresh stats + density layers
+const _applyDisplay = applyDisplay;
+applyDisplay = function(){
+  _applyDisplay();
+  updateThrSlider(); renderStats(); updateHeat(); updateIDW();
+  scheduleAutosave();
+};
+
+/* =========================================================================
+   SECTION 16 — SOTA: clustering, ROD↔PMB swipe, time-slider,
+   auto-delineation, cross-section profile, figure templates/print
+   ========================================================================= */
+window.STATE_pointMode = 'normal';
+
+// dedicated panes so the side-by-side control can clip each side
+map.createPane('paneL'); map.getPane('paneL').style.zIndex = 460;
+map.createPane('paneR'); map.getPane('paneR').style.zIndex = 460;
+
+// ---- marker clustering ----
+let clusterGroup = null;
+function clearCluster(){ if(clusterGroup){ map.removeLayer(clusterGroup); clusterGroup=null; } }
+function buildCluster(){
+  clearCluster();
+  clusterGroup = L.markerClusterGroup({ maxClusterRadius:45, chunkedLoading:true, spiderfyOnMaxZoom:true });
+  DATA.features.forEach(f=>{
+    const p=f.properties; if(!passesFilter(p)) return;
+    const [lon,lat]=f.geometry.coordinates;
+    const m=makeMarker(p,lon,lat,{noLabel:true});
+    clusterGroup.addLayer(m); markerById[p.id]=m;
+  });
+  map.addLayer(clusterGroup);
+}
+
+// ---- ROD ↔ PMB swipe (native pane-clipping divider) ----
+let swipeLeft=null, swipeRight=null, swipeX=null;
+function clipSwipePanes(){
+  if(window.STATE_pointMode!=='swipe') return;
+  const size=map.getSize();
+  if(swipeX===null) swipeX=size.x/2;
+  swipeX=Math.max(0,Math.min(size.x,swipeX));
+  const nw=map.containerPointToLayerPoint([0,0]);
+  const se=map.containerPointToLayerPoint([size.x,size.y]);
+  const clipX=nw.x+swipeX;
+  map.getPane('paneL').style.clip = `rect(${nw.y}px,${clipX}px,${se.y}px,${nw.x}px)`;
+  map.getPane('paneR').style.clip = `rect(${nw.y}px,${se.x}px,${se.y}px,${clipX}px)`;
+  const dv=$('swipeDivider'); dv.style.left=swipeX+'px';
+}
+function clearSwipe(){
+  map.off('move zoom zoomend resize moveend', clipSwipePanes);
+  if(swipeLeft){ map.removeLayer(swipeLeft); swipeLeft=null; }
+  if(swipeRight){ map.removeLayer(swipeRight); swipeRight=null; }
+  const pl=map.getPane('paneL'), pr=map.getPane('paneR');
+  if(pl) pl.style.clip=''; if(pr) pr.style.clip='';
+  $('swipeDivider').classList.remove('on');
+}
+function buildSwipe(){
+  clearSwipe();
+  swipeLeft=L.layerGroup(); swipeRight=L.layerGroup();
+  DATA.features.forEach(f=>{
+    const p=f.properties; if(!passesFilter(p)) return;
+    const [lon,lat]=f.geometry.coordinates;
+    makeMarker(p,lon,lat,{mode:'rod',pane:'paneL',noLabel:true}).addTo(swipeLeft);
+    makeMarker(p,lon,lat,{mode:'pmb',pane:'paneR',noLabel:true}).addTo(swipeRight);
+  });
+  swipeLeft.addTo(map); swipeRight.addTo(map);
+  swipeX = map.getSize().x/2;
+  $('swipeDivider').classList.add('on');
+  map.on('move zoom zoomend resize moveend', clipSwipePanes);
+  clipSwipePanes();
+}
+// divider drag
+(function(){
+  const dv=$('swipeDivider'); let dragging=false;
+  const startDrag=()=>{ dragging=true; map.dragging.disable(); document.body.style.cursor='ew-resize'; };
+  const endDrag=()=>{ dragging=false; map.dragging.enable(); document.body.style.cursor=''; };
+  const moveDrag=e=>{ if(!dragging) return; const r=$('map').getBoundingClientRect();
+    const cx=(e.touches?e.touches[0].clientX:e.clientX); swipeX=cx-r.left; clipSwipePanes(); };
+  dv.addEventListener('mousedown', startDrag); dv.addEventListener('touchstart', startDrag,{passive:true});
+  window.addEventListener('mouseup', endDrag); window.addEventListener('touchend', endDrag);
+  window.addEventListener('mousemove', moveDrag); window.addEventListener('touchmove', moveDrag,{passive:true});
+})();
+
+function setPointMode(mode){
+  clearCluster(); clearSwipe(); sampleLayer.clearLayers();
+  window.STATE_pointMode = mode;
+  buildMarkers();
+  buildLegend();
+}
+$('toggleCluster').addEventListener('change', e=>{
+  if(e.target.checked){ $('toggleSwipe').checked=false; $('swipeHint').style.display='none'; setPointMode('cluster'); }
+  else setPointMode('normal');
+  scheduleAutosave();
+});
+$('toggleSwipe').addEventListener('change', e=>{
+  $('swipeHint').style.display = e.target.checked ? '' : 'none';
+  if(e.target.checked){ $('toggleCluster').checked=false; setPointMode('swipe'); }
+  else setPointMode('normal');
+  scheduleAutosave();
+});
+
+// ---- round time-slider ----
+const TIME_LABELS=['Round 1 only','Round 2 only','both rounds'];
+function applyTime(v){
+  $('fRound').value = v==0 ? '1' : v==1 ? '2' : 'both';
+  $('timeLabel').textContent = 'Showing: '+TIME_LABELS[v];
+  applyFilters();
+}
+$('timeSlider').addEventListener('input', e=>applyTime(+e.target.value));
+let playTimer=null;
+$('timePlay').addEventListener('click', ()=>{
+  if(playTimer){ clearInterval(playTimer); playTimer=null; $('timePlay').textContent='▶'; return; }
+  $('timePlay').textContent='⏸'; let v=0; $('timeSlider').value=0; applyTime(0);
+  playTimer=setInterval(()=>{ v++; if(v>2){ clearInterval(playTimer); playTimer=null; $('timePlay').textContent='▶'; return; }
+    $('timeSlider').value=v; applyTime(v); }, 1100);
+});
+
+// ---- auto-delineation (Turf interpolate -> isobands at threshold) ----
+function autoDelineate(){
+  const an=$('delinAnalyte').value, crit=$('delinCrit').value, thr=CRITERIA[crit][an];
+  const pts=DATA.features.filter(f=>f.properties.sampled && num(f.properties[an])!==null)
+    .map(f=>turf.point(f.geometry.coordinates,{v:f.properties[an]}));
+  if(pts.length<3){ $('delinMsg').textContent='Not enough sampled data for '+an+'.'; return; }
+  const fc=turf.featureCollection(pts);
+  let grid, bands, hull=null;
+  try{ grid=turf.interpolate(fc, 12, {gridType:'point', property:'v', units:'meters', weight:2}); }
+  catch(e){ $('delinMsg').textContent='Interpolation failed: '+e.message; return; }
+  try{ bands=turf.isobands(grid,[thr,1e12],{zProperty:'v'}); }
+  catch(e){ $('delinMsg').textContent='Contouring failed: '+e.message; return; }
+  try{ hull=turf.convex(fc); }catch(e){}
+  let added=0;
+  bands.features.forEach(bf=>{
+    if(!bf.geometry) return;
+    let geom=bf;
+    if(hull){ try{ const c=turf.intersect(bf,hull); if(c) geom=c; }catch(e){} }
+    L.geoJSON(geom,{ style:{color:'#d7191c',weight:2,fillColor:'#d7191c',fillOpacity:0.18,dashArray:'5,3'} })
+      .eachLayer(l=>{ drawnItems.addLayer(l); l.bindPopup(`Auto-delineated: ${an} ≥ ${thr} ${UNITS} (${crit})`);
+        l.on('pm:edit pm:update',()=>scheduleAutosave()); added++; });
+  });
+  $('delinMsg').textContent = added ? `Delineated ${an} ≥ ${thr} ${UNITS} (${added} polygon(s)). Editable via Draw tools.`
+                                    : `No area exceeds ${thr} ${UNITS}.`;
+  scheduleAutosave();
+}
+$('delinRun').addEventListener('click', autoDelineate);
+
+// ---- cross-section profile (nearest samples along a drawn line) ----
+let xsChart=null;
+function lastLine(){
+  let line=null;
+  drawnItems.eachLayer(l=>{ if(l instanceof L.Polyline && !(l instanceof L.Polygon)) line=l; });
+  return line;
+}
+function crossSection(){
+  const line=lastLine();
+  if(!line){ alert('Draw a polyline first (Draw tools), then click Profile.'); return; }
+  const an=$('xsAnalyte').value, gj=line.toGeoJSON();
+  const totalM=turf.length(gj,{units:'meters'});
+  const data=[];
+  DATA.features.forEach(f=>{
+    const p=f.properties, v=num(p[an]); if(!p.sampled || v===null) return;
+    const snap=turf.nearestPointOnLine(gj, turf.point(f.geometry.coordinates), {units:'meters'});
+    if(snap.properties.dist > 40) return;                 // within 40 m of line
+    data.push({ x:snap.properties.location, y:v, id:p.id });
+  });
+  data.sort((a,b)=>a.x-b.x);
+  if(!data.length){ alert('No samples within 40 m of the line.'); return; }
+  const thr=CRITERIA[STATE.criterion][an];
+  if(xsChart) xsChart.destroy();
+  xsChart=new Chart($('xsChart'),{ type:'line', data:{datasets:[
+    { label:an+' along line', data:data, borderColor:'#1f6feb', backgroundColor:'#1f6feb', pointRadius:4, showLine:true, tension:0.2 },
+    { label:STATE.criterion+' '+thr, data:[{x:0,y:thr},{x:totalM,y:thr}], borderColor:'#d7191c', borderDash:[5,4], pointRadius:0 }
+  ]}, options:{ animation:false,
+    scales:{ x:{type:'linear',title:{display:true,text:'distance along line (m)'}}, y:{title:{display:true,text:an+' '+UNITS}} },
+    plugins:{ legend:{labels:{boxWidth:12,font:{size:10}}},
+      tooltip:{callbacks:{label:c=>c.raw && c.raw.id ? `${c.raw.id}: ${c.raw.y} ${UNITS}` : ''}} } }});
+}
+$('xsRun').addEventListener('click', crossSection);
+
+// ---- figure templates + print ----
+$('figTemplate').addEventListener('change', e=>{
+  const v=e.target.value; if(!v) return;
+  const tb=document.querySelector('.tb-title');
+  $('showTitleBlock').checked=true; $('titleBlock').classList.add('show');
+  const setCB=m=>{ STATE.colorBy=m; $('colorBy').value=m; };
+  const setAn=a=>{ STATE.analyte=a; $('analyte').value=a; };
+  if(v==='loc'){ setCB('round'); tb.innerText='Figure — ABP Sample Locations (Rounds 1 & 2)'; }
+  if(v==='hg'){ setCB('conc'); setAn('Hg'); tb.innerText='Figure — Mercury (Hg) Surface-Soil Results'; }
+  if(v==='as'){ setCB('conc'); setAn('As'); tb.innerText='Figure — Arsenic (As) Surface-Soil Results'; }
+  if(v==='pmb'){ setCB('pmb'); tb.innerText='Figure — PMB / Background Exceedances'; }
+  applyDisplay();
+});
+$('printBtn').addEventListener('click', ()=>window.print());
+
+/* =========================================================================
+   SECTION 17 — INIT
+   ========================================================================= */
+function fitToData(){
+  const pts = DATA.features.map(f=>[f.geometry.coordinates[1], f.geometry.coordinates[0]]);
+  map.fitBounds(L.latLngBounds(pts), { padding:[40,40] });
+}
+buildMarkers();
+buildLegend();
+syncControlVisibility();
+updateThrSlider();
+renderStats();
+fitToData();
+loadSession(true);   // restore prior session if present (silent)
+
+console.log('[ABP] loaded', DATA.features.length, 'features; criteria=', CRITERIA);
+</script>
+</body>
+</html>
