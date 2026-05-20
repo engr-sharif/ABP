@@ -240,6 +240,7 @@ body:not(.with-panel) #coords{left:0}
         <label class="field">Opacity <span id="heatOpV">0.75</span></label>
         <input type="range" id="heatOp" min="0.1" max="1" step="0.05" value="0.75">
         <label class="checkrow"><input type="checkbox" id="heatLog" checked> Log-weight (Hg)</label>
+        <p class="hint" style="margin:4px 0 0">Intensity is scaled to the active <b>Threshold set</b> (ROD/PMB) above — switching it rebakes the surface.</p>
       </div>
       <label class="checkrow"><input type="checkbox" id="toggleIDW"> IDW surface (clipped to hull)</label>
       <div id="idwCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
@@ -344,8 +345,12 @@ body:not(.with-panel) #coords{left:0}
   <div class="section" data-sec="filters">
     <h2>Filters <span class="chev">▾</span></h2>
     <div class="body">
-      <label class="field">Dataset / round</label>
-      <select id="fRound"><option value="both">All datasets</option><option value="1">Round 1 only</option><option value="2">Round 2 only</option><option value="EA">EA Historical only</option></select>
+      <label class="field">Datasets</label>
+      <div id="dsFilter" class="row" style="gap:12px;flex-wrap:wrap">
+        <label class="checkrow" style="margin:0"><input type="checkbox" class="dsFilter" value="1" checked> Round 1</label>
+        <label class="checkrow" style="margin:0"><input type="checkbox" class="dsFilter" value="2" checked> Round 2</label>
+        <label class="checkrow" style="margin:0"><input type="checkbox" class="dsFilter" value="EA" checked> EA Historical</label>
+      </div>
       <label class="field">Sampled status</label>
       <select id="fSampled"><option value="all">All</option><option value="yes">Sampled only</option><option value="no">Not sampled only</option></select>
       <label class="field">Exceedance</label>
@@ -459,7 +464,7 @@ const STATE = {
   colorBy:'rod', analyte:'Hg', criterion:'ROD',
   showLabels:false, logScale:true,
   showPoints:true,
-  filters:{ round:'both', sampled:'all', exceed:'all', depth:'all', thr:0 }
+  filters:{ datasets:['1','2','EA'], sampled:'all', exceed:'all', depth:'all', thr:0 }
 };
 
 document.getElementById('unvalidated').title = DATA.metadata.note || 'Round 2 data is unvalidated.';
@@ -662,7 +667,7 @@ function popupHtml(p){
 // ---- filter predicate (SECTION 8 uses STATE.filters) --------------------
 function passesFilter(p){
   const f = STATE.filters;
-  if(f.round!=='both' && p.dataset!==f.round) return false;
+  if(!f.datasets.includes(p.dataset)) return false;
   if(f.sampled==='yes' && !p.sampled) return false;
   if(f.sampled==='no'  &&  p.sampled) return false;
   if(f.exceed==='rod'  && p.rod_exceed!=='YES') return false;
@@ -805,11 +810,15 @@ STATE.layers = { heat:false, idw:false, grid:false };
 const $ = id => document.getElementById(id);
 
 function readFilters(){
-  STATE.filters.round   = $('fRound').value;
+  STATE.filters.datasets = [...document.querySelectorAll('.dsFilter:checked')].map(c=>c.value);
   STATE.filters.sampled = $('fSampled').value;
   STATE.filters.exceed  = $('fExceed').value;
   STATE.filters.depth   = $('fDepth').value;
   STATE.filters.thr     = +$('fThr').value;
+}
+function setDatasetChecks(){
+  const sel = STATE.filters.datasets || [];
+  document.querySelectorAll('.dsFilter').forEach(c=>{ c.checked = sel.includes(c.value); });
 }
 function updateThrSlider(){
   const [,hi] = analyteDomain(STATE.analyte);
@@ -858,15 +867,20 @@ function applyFilters(){
    SECTION 8 — HEAT MAP (Leaflet.heat, analyte-weighted)
    ========================================================================= */
 let heatLayer = null;
+const HEAT_LOG_SPAN = 2;          // ± decades around the goal that span the cool→hot scale
+// Heat intensity is weighted relative to the ACTIVE remediation goal (ROD or PMB):
+// a sample exactly at the goal maps to mid-heat (0.5), exceedances run hot, clean areas cool.
+// Switching the Threshold set (ROD↔PMB) rescales the surface because the goals differ.
 function heatPoints(){
   const an = $('heatAnalyte').value;
   const useLog = $('heatLog').checked && an==='Hg';
-  const [lo,hi] = analyteDomain(an);
+  const thr = CRITERIA[STATE.criterion][an];
   return filteredFeatures().map(f=>{
     const v = num(f.properties[an]); if(v===null || v<=0) return null;
+    const ratio = (isNum(thr) && thr>0) ? v/thr : v;     // multiples of the active goal
     let t;
-    if(useLog){ const llo=Math.log10(Math.max(lo,1e-6)), lhi=Math.log10(hi); t=(Math.log10(v)-llo)/((lhi-llo)||1); }
-    else t = (v-lo)/((hi-lo)||1);
+    if(useLog) t = 0.5 + 0.5*(Math.log10(ratio)/HEAT_LOG_SPAN);
+    else       t = ratio/2;                              // 2× the goal saturates to full heat
     return [f.geometry.coordinates[1], f.geometry.coordinates[0], Math.max(0.05,Math.min(1,t))];
   }).filter(Boolean);
 }
@@ -1188,7 +1202,12 @@ function loadSession(silent){
   STATE.logScale=d.logScale!==false; set('logScale',STATE.logScale);
   STATE.showPoints=d.showPoints!==false; set('togglePoints',STATE.showPoints);
   if(d.filters) Object.assign(STATE.filters,d.filters);
-  set('fRound',STATE.filters.round); set('fSampled',STATE.filters.sampled);
+  if(!Array.isArray(STATE.filters.datasets)){           // migrate legacy single-select round filter
+    STATE.filters.datasets = (STATE.filters.round && STATE.filters.round!=='both')
+      ? [String(STATE.filters.round)] : ['1','2','EA'];
+  }
+  delete STATE.filters.round;
+  setDatasetChecks(); set('fSampled',STATE.filters.sampled);
   set('fExceed',STATE.filters.exceed); set('fDepth',STATE.filters.depth);
   set('fThr',STATE.filters.thr);
   if(d.layers) Object.assign(STATE.layers,d.layers);
@@ -1226,10 +1245,12 @@ $('idwRefresh').addEventListener('click', updateIDW);
 $('idwAnalyte').addEventListener('change', updateIDW);
 $('gridSize').addEventListener('change', updateGrid);
 // filters
-['fRound','fSampled','fExceed','fDepth'].forEach(id=>$(id).addEventListener('change', applyFilters));
+['fSampled','fExceed','fDepth'].forEach(id=>$(id).addEventListener('change', applyFilters));
+document.querySelectorAll('.dsFilter').forEach(c=>c.addEventListener('change', applyFilters));
 $('fThr').addEventListener('input', ()=>{ $('fThrV').textContent=$('fThr').value; applyFilters(); });
 $('resetFilters').addEventListener('click', ()=>{
-  $('fRound').value='both'; $('fSampled').value='all'; $('fExceed').value='all'; $('fDepth').value='all'; $('fThr').value=0;
+  document.querySelectorAll('.dsFilter').forEach(c=>c.checked=true);
+  $('fSampled').value='all'; $('fExceed').value='all'; $('fDepth').value='all'; $('fThr').value=0;
   applyFilters();
 });
 $('searchBtn').addEventListener('click', doSearch);
@@ -1360,10 +1381,11 @@ $('toggleSwipe').addEventListener('change', e=>{
 });
 
 // ---- dataset time-slider ----
-const TIME_STEPS =['1','2','EA','both'];
+const TIME_SETS  =[['1'],['2'],['EA'],['1','2','EA']];
 const TIME_LABELS=['Round 1 only','Round 2 only','EA Historical only','all datasets'];
 function applyTime(v){
-  $('fRound').value = TIME_STEPS[v];
+  const sel = TIME_SETS[v];
+  document.querySelectorAll('.dsFilter').forEach(c=>{ c.checked = sel.includes(c.value); });
   $('timeLabel').textContent = 'Showing: '+TIME_LABELS[v];
   applyFilters();
 }
@@ -1372,7 +1394,7 @@ let playTimer=null;
 $('timePlay').addEventListener('click', ()=>{
   if(playTimer){ clearInterval(playTimer); playTimer=null; $('timePlay').textContent='▶'; return; }
   $('timePlay').textContent='⏸'; let v=0; $('timeSlider').value=0; applyTime(0);
-  playTimer=setInterval(()=>{ v++; if(v>=TIME_STEPS.length){ clearInterval(playTimer); playTimer=null; $('timePlay').textContent='▶'; return; }
+  playTimer=setInterval(()=>{ v++; if(v>=TIME_SETS.length){ clearInterval(playTimer); playTimer=null; $('timePlay').textContent='▶'; return; }
     $('timeSlider').value=v; applyTime(v); }, 1100);
 });
 
