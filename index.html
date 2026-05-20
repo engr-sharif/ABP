@@ -167,6 +167,12 @@ select:focus,input[type=text]:focus,input[type=number]:focus{border-color:var(--
   padding:2px 8px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;transition:left .25s var(--ease)}
 body:not(.with-panel) #coords{left:0}
 
+/* author watermark (also captured in exported figures) */
+#watermark{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);z-index:1000;
+  font-size:11px;font-weight:600;letter-spacing:.3px;color:var(--muted);
+  background:var(--overlay);border:1px solid var(--line);border-radius:6px;padding:2px 11px;
+  box-shadow:0 1px 4px var(--shadow);backdrop-filter:blur(3px);pointer-events:none;opacity:.9;white-space:nowrap}
+
 .stats-table{width:100%;border-collapse:collapse;font-size:11px;font-variant-numeric:tabular-nums}
 .stats-table th,.stats-table td{border:1px solid var(--line);padding:2px 5px;text-align:right}
 .stats-table th{background:#fafbfc;text-align:center}
@@ -492,6 +498,8 @@ body:not(.with-panel) #coords{left:0}
 <div id="swipeDivider"><div class="grip">⇔</div><div class="tagL">ROD</div><div class="tagR">PMB</div></div>
 
 <div id="coords">—</div>
+
+<div id="watermark">Mo Sharif · Jacobs 2026</div>
 
 <!-- ============================== LEGEND ============================== -->
 <div id="legend">
