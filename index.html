@@ -8,9 +8,12 @@
 <!-- ============================== CDN LIBRARIES ============================== -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.min.js"></script>
 <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://unpkg.com/chart.js@4.4.1/dist/chart.umd.js"></script>
@@ -134,7 +137,28 @@ body:not(.with-panel) #coords{left:0}
 .statline b{font-variant-numeric:tabular-nums}
 
 .swatch-mini{width:11px;height:11px;display:inline-block;border-radius:2px;border:1px solid rgba(0,0,0,.3);vertical-align:-1px}
-.leaflet-pm-toolbar .leaflet-pm-icon-text{}
+
+/* swipe divider (native ROD<->PMB split) */
+#swipeDivider{position:absolute;top:0;bottom:0;width:0;border-left:3px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.5);
+  z-index:900;cursor:ew-resize;display:none}
+#swipeDivider.on{display:block}
+#swipeDivider .grip{position:absolute;top:50%;left:-15px;width:30px;height:30px;margin-top:-15px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;
+  font-size:13px;color:#444}
+#swipeDivider .tagL,#swipeDivider .tagR{position:absolute;top:8px;font-size:11px;font-weight:700;color:#fff;
+  background:rgba(0,0,0,.55);padding:2px 6px;border-radius:3px;white-space:nowrap}
+#swipeDivider .tagL{right:6px}#swipeDivider .tagR{left:6px}
+
+/* ============================== PRINT LAYOUT (figure templates) ============================== */
+@media print{
+  #topbar,#panel,#panelToggle,#coords,
+  .leaflet-control-zoom,.leaflet-pm-toolbar,.leaflet-control-attribution,
+  .leaflet-sbs-range{ display:none !important; }
+  #map{ top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; }
+  #legend,#northArrow,#titleBlock{ box-shadow:none !important; }
+  body{ overflow:visible !important; }
+  @page{ size:landscape; margin:8mm; }
+}
 </style>
 </head>
 <body class="with-panel">
@@ -240,6 +264,60 @@ body:not(.with-panel) #coords{left:0}
     </div>
   </div>
 
+  <div class="section closed" data-sec="advanced">
+    <h2>Advanced (SOTA) <span class="chev">▾</span></h2>
+    <div class="body">
+      <label class="checkrow"><input type="checkbox" id="toggleCluster"> Marker clustering</label>
+      <label class="checkrow"><input type="checkbox" id="toggleSwipe"> Split-screen swipe: ROD ↔ PMB</label>
+      <p class="hint" id="swipeHint" style="display:none">Left of the handle = ROD coloring · right = PMB coloring.</p>
+
+      <label class="field">Round time-slider</label>
+      <div class="row">
+        <input type="range" id="timeSlider" min="0" max="2" value="2" step="1" style="flex:3">
+        <button class="btn" id="timePlay" style="flex:none">▶</button>
+      </div>
+      <div class="hint" id="timeLabel">Showing: both rounds</div>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:9px 0">
+      <label class="field">Auto-delineate contamination extent</label>
+      <p class="hint">Draws an editable polygon enclosing the area where the interpolated surface exceeds the active threshold.</p>
+      <div class="row">
+        <select id="delinAnalyte" style="flex:2">
+          <option value="Hg">Hg</option><option value="As">As</option><option value="Sb">Sb</option><option value="Tl">Tl</option>
+        </select>
+        <select id="delinCrit" style="flex:2">
+          <option value="ROD">ROD</option><option value="PMB">PMB</option>
+        </select>
+        <button class="btn" id="delinRun" style="flex:none">Run</button>
+      </div>
+      <div id="delinMsg" class="hint"></div>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:9px 0">
+      <label class="field">Cross-section profile</label>
+      <p class="hint">Draw a polyline, then build a profile of nearby-sample concentration vs distance along the line.</p>
+      <div class="row">
+        <select id="xsAnalyte" style="flex:2">
+          <option value="Hg">Hg</option><option value="As">As</option><option value="Sb">Sb</option><option value="Tl">Tl</option>
+        </select>
+        <button class="btn" id="xsRun" style="flex:none">Profile last line</button>
+      </div>
+      <canvas id="xsChart" height="160" style="margin-top:6px"></canvas>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:9px 0">
+      <label class="field">Figure template</label>
+      <div class="row">
+        <select id="figTemplate" style="flex:3">
+          <option value="">— choose —</option>
+          <option value="loc">Site / Sample Locations</option>
+          <option value="hg">Hg Results (ROD)</option>
+          <option value="as">As Results (ROD)</option>
+          <option value="pmb">PMB Exceedances</option>
+        </select>
+        <button class="btn" id="printBtn" style="flex:none">Print</button>
+      </div>
+    </div>
+  </div>
+
   <div class="section" data-sec="draw">
     <h2>Draw &amp; Measure <span class="chev">▾</span></h2>
     <div class="body">
@@ -338,6 +416,8 @@ body:not(.with-panel) #coords{left:0}
   <div class="tb-title" contenteditable="true">Figure X — ABP Surface Soil Sample Locations</div>
   <div class="tb-sub" contenteditable="true">Sulphur Bank Mercury Mine · Area Between Piles · Rounds 1 &amp; 2</div>
 </div>
+
+<div id="swipeDivider"><div class="grip">⇔</div><div class="tagL">ROD</div><div class="tagR">PMB</div></div>
 
 <div id="coords">—</div>
 
@@ -474,9 +554,10 @@ function driverColor(p){
 }
 
 // MASTER: fill color for a feature under the active color-by mode
-function fillFor(p){
+// `mode` overrides STATE.colorBy (used by the ROD↔PMB swipe panes)
+function fillFor(p, mode){
   if(!p.sampled) return null;                  // hollow handled by renderer
-  switch(STATE.colorBy){
+  switch(mode || STATE.colorBy){
     case 'rod': return p.rod_exceed==='YES'?SEM.yes : p.rod_exceed==='NO'?SEM.no : SEM.ns;
     case 'pmb': return p.pmb_exceed==='YES'?SEM.yes : p.pmb_exceed==='NO'?SEM.no : SEM.ns;
     case 'round': return p.round===1 ? '#2b8cbe' : '#e6550d';
@@ -501,8 +582,8 @@ function fillFor(p){
 const sampleLayer = L.layerGroup().addTo(map);
 const markerById = {};   // id -> marker
 
-function svgMarker(p){
-  const fill = fillFor(p);
+function svgMarker(p, mode){
+  const fill = fillFor(p, mode);
   const sampled = p.sampled;
   const stroke = sampled ? '#222' : '#777';
   const dash = sampled ? '' : 'stroke-dasharray="3,2"';
@@ -579,24 +660,32 @@ function passesFilter(p){
 // features currently passing the filter (used by stats, heat, IDW, CSV)
 function filteredFeatures(){ return DATA.features.filter(f=>passesFilter(f.properties)); }
 
+function makeMarker(p, lon, lat, opts){
+  opts = opts || {};
+  const m = L.marker([lat,lon], { icon:svgMarker(p, opts.mode), pane:opts.pane||'markerPane' });
+  m.featureProps = p;
+  m.bindPopup(()=>popupHtml(p), { maxWidth:320, minWidth:230 });
+  if(STATE.showLabels && !opts.noLabel){
+    m.bindTooltip(p.id, { permanent:true, direction:'right', className:'sample-label', offset:[8,0] });
+  }
+  return m;
+}
+
+// dispatcher: render points in the active mode (normal | cluster | swipe — SOTA)
 function buildMarkers(){
   sampleLayer.clearLayers();
   for(const k in markerById) delete markerById[k];
+  if(window.STATE_pointMode === 'swipe'){ buildSwipe(); return; }
+  if(window.STATE_pointMode === 'cluster'){ buildCluster(); return; }
   if(!STATE.showPoints) return;
   DATA.features.forEach(f=>{
     const p = f.properties;
     if(!passesFilter(p)) return;
     const [lon,lat] = f.geometry.coordinates;
-    const m = L.marker([lat,lon], { icon:svgMarker(p), pane:'markerPane' });
-    m.featureProps = p;
-    m.bindPopup(()=>popupHtml(p), { maxWidth:320, minWidth:230 });
-    if(STATE.showLabels){
-      m.bindTooltip(p.id, { permanent:true, direction:'right', className:'sample-label', offset:[8,0] });
-    }
+    const m = makeMarker(p, lon, lat);
     m.addTo(sampleLayer);
     markerById[p.id] = m;
   });
-  // make sample points snappable targets for Geoman drawing
   if(window.refreshSnapTargets) window.refreshSnapTargets();
 }
 
@@ -1162,7 +1251,191 @@ applyDisplay = function(){
 };
 
 /* =========================================================================
-   SECTION 16 — INIT
+   SECTION 16 — SOTA: clustering, ROD↔PMB swipe, time-slider,
+   auto-delineation, cross-section profile, figure templates/print
+   ========================================================================= */
+window.STATE_pointMode = 'normal';
+
+// dedicated panes so the side-by-side control can clip each side
+map.createPane('paneL'); map.getPane('paneL').style.zIndex = 460;
+map.createPane('paneR'); map.getPane('paneR').style.zIndex = 460;
+
+// ---- marker clustering ----
+let clusterGroup = null;
+function clearCluster(){ if(clusterGroup){ map.removeLayer(clusterGroup); clusterGroup=null; } }
+function buildCluster(){
+  clearCluster();
+  clusterGroup = L.markerClusterGroup({ maxClusterRadius:45, chunkedLoading:true, spiderfyOnMaxZoom:true });
+  DATA.features.forEach(f=>{
+    const p=f.properties; if(!passesFilter(p)) return;
+    const [lon,lat]=f.geometry.coordinates;
+    const m=makeMarker(p,lon,lat,{noLabel:true});
+    clusterGroup.addLayer(m); markerById[p.id]=m;
+  });
+  map.addLayer(clusterGroup);
+}
+
+// ---- ROD ↔ PMB swipe (native pane-clipping divider) ----
+let swipeLeft=null, swipeRight=null, swipeX=null;
+function clipSwipePanes(){
+  if(window.STATE_pointMode!=='swipe') return;
+  const size=map.getSize();
+  if(swipeX===null) swipeX=size.x/2;
+  swipeX=Math.max(0,Math.min(size.x,swipeX));
+  const nw=map.containerPointToLayerPoint([0,0]);
+  const se=map.containerPointToLayerPoint([size.x,size.y]);
+  const clipX=nw.x+swipeX;
+  map.getPane('paneL').style.clip = `rect(${nw.y}px,${clipX}px,${se.y}px,${nw.x}px)`;
+  map.getPane('paneR').style.clip = `rect(${nw.y}px,${se.x}px,${se.y}px,${clipX}px)`;
+  const dv=$('swipeDivider'); dv.style.left=swipeX+'px';
+}
+function clearSwipe(){
+  map.off('move zoom zoomend resize moveend', clipSwipePanes);
+  if(swipeLeft){ map.removeLayer(swipeLeft); swipeLeft=null; }
+  if(swipeRight){ map.removeLayer(swipeRight); swipeRight=null; }
+  const pl=map.getPane('paneL'), pr=map.getPane('paneR');
+  if(pl) pl.style.clip=''; if(pr) pr.style.clip='';
+  $('swipeDivider').classList.remove('on');
+}
+function buildSwipe(){
+  clearSwipe();
+  swipeLeft=L.layerGroup(); swipeRight=L.layerGroup();
+  DATA.features.forEach(f=>{
+    const p=f.properties; if(!passesFilter(p)) return;
+    const [lon,lat]=f.geometry.coordinates;
+    makeMarker(p,lon,lat,{mode:'rod',pane:'paneL',noLabel:true}).addTo(swipeLeft);
+    makeMarker(p,lon,lat,{mode:'pmb',pane:'paneR',noLabel:true}).addTo(swipeRight);
+  });
+  swipeLeft.addTo(map); swipeRight.addTo(map);
+  swipeX = map.getSize().x/2;
+  $('swipeDivider').classList.add('on');
+  map.on('move zoom zoomend resize moveend', clipSwipePanes);
+  clipSwipePanes();
+}
+// divider drag
+(function(){
+  const dv=$('swipeDivider'); let dragging=false;
+  const startDrag=()=>{ dragging=true; map.dragging.disable(); document.body.style.cursor='ew-resize'; };
+  const endDrag=()=>{ dragging=false; map.dragging.enable(); document.body.style.cursor=''; };
+  const moveDrag=e=>{ if(!dragging) return; const r=$('map').getBoundingClientRect();
+    const cx=(e.touches?e.touches[0].clientX:e.clientX); swipeX=cx-r.left; clipSwipePanes(); };
+  dv.addEventListener('mousedown', startDrag); dv.addEventListener('touchstart', startDrag,{passive:true});
+  window.addEventListener('mouseup', endDrag); window.addEventListener('touchend', endDrag);
+  window.addEventListener('mousemove', moveDrag); window.addEventListener('touchmove', moveDrag,{passive:true});
+})();
+
+function setPointMode(mode){
+  clearCluster(); clearSwipe(); sampleLayer.clearLayers();
+  window.STATE_pointMode = mode;
+  buildMarkers();
+  buildLegend();
+}
+$('toggleCluster').addEventListener('change', e=>{
+  if(e.target.checked){ $('toggleSwipe').checked=false; $('swipeHint').style.display='none'; setPointMode('cluster'); }
+  else setPointMode('normal');
+  scheduleAutosave();
+});
+$('toggleSwipe').addEventListener('change', e=>{
+  $('swipeHint').style.display = e.target.checked ? '' : 'none';
+  if(e.target.checked){ $('toggleCluster').checked=false; setPointMode('swipe'); }
+  else setPointMode('normal');
+  scheduleAutosave();
+});
+
+// ---- round time-slider ----
+const TIME_LABELS=['Round 1 only','Round 2 only','both rounds'];
+function applyTime(v){
+  $('fRound').value = v==0 ? '1' : v==1 ? '2' : 'both';
+  $('timeLabel').textContent = 'Showing: '+TIME_LABELS[v];
+  applyFilters();
+}
+$('timeSlider').addEventListener('input', e=>applyTime(+e.target.value));
+let playTimer=null;
+$('timePlay').addEventListener('click', ()=>{
+  if(playTimer){ clearInterval(playTimer); playTimer=null; $('timePlay').textContent='▶'; return; }
+  $('timePlay').textContent='⏸'; let v=0; $('timeSlider').value=0; applyTime(0);
+  playTimer=setInterval(()=>{ v++; if(v>2){ clearInterval(playTimer); playTimer=null; $('timePlay').textContent='▶'; return; }
+    $('timeSlider').value=v; applyTime(v); }, 1100);
+});
+
+// ---- auto-delineation (Turf interpolate -> isobands at threshold) ----
+function autoDelineate(){
+  const an=$('delinAnalyte').value, crit=$('delinCrit').value, thr=CRITERIA[crit][an];
+  const pts=DATA.features.filter(f=>f.properties.sampled && num(f.properties[an])!==null)
+    .map(f=>turf.point(f.geometry.coordinates,{v:f.properties[an]}));
+  if(pts.length<3){ $('delinMsg').textContent='Not enough sampled data for '+an+'.'; return; }
+  const fc=turf.featureCollection(pts);
+  let grid, bands, hull=null;
+  try{ grid=turf.interpolate(fc, 12, {gridType:'point', property:'v', units:'meters', weight:2}); }
+  catch(e){ $('delinMsg').textContent='Interpolation failed: '+e.message; return; }
+  try{ bands=turf.isobands(grid,[thr,1e12],{zProperty:'v'}); }
+  catch(e){ $('delinMsg').textContent='Contouring failed: '+e.message; return; }
+  try{ hull=turf.convex(fc); }catch(e){}
+  let added=0;
+  bands.features.forEach(bf=>{
+    if(!bf.geometry) return;
+    let geom=bf;
+    if(hull){ try{ const c=turf.intersect(bf,hull); if(c) geom=c; }catch(e){} }
+    L.geoJSON(geom,{ style:{color:'#d7191c',weight:2,fillColor:'#d7191c',fillOpacity:0.18,dashArray:'5,3'} })
+      .eachLayer(l=>{ drawnItems.addLayer(l); l.bindPopup(`Auto-delineated: ${an} ≥ ${thr} ${UNITS} (${crit})`);
+        l.on('pm:edit pm:update',()=>scheduleAutosave()); added++; });
+  });
+  $('delinMsg').textContent = added ? `Delineated ${an} ≥ ${thr} ${UNITS} (${added} polygon(s)). Editable via Draw tools.`
+                                    : `No area exceeds ${thr} ${UNITS}.`;
+  scheduleAutosave();
+}
+$('delinRun').addEventListener('click', autoDelineate);
+
+// ---- cross-section profile (nearest samples along a drawn line) ----
+let xsChart=null;
+function lastLine(){
+  let line=null;
+  drawnItems.eachLayer(l=>{ if(l instanceof L.Polyline && !(l instanceof L.Polygon)) line=l; });
+  return line;
+}
+function crossSection(){
+  const line=lastLine();
+  if(!line){ alert('Draw a polyline first (Draw tools), then click Profile.'); return; }
+  const an=$('xsAnalyte').value, gj=line.toGeoJSON();
+  const totalM=turf.length(gj,{units:'meters'});
+  const data=[];
+  DATA.features.forEach(f=>{
+    const p=f.properties, v=num(p[an]); if(!p.sampled || v===null) return;
+    const snap=turf.nearestPointOnLine(gj, turf.point(f.geometry.coordinates), {units:'meters'});
+    if(snap.properties.dist > 40) return;                 // within 40 m of line
+    data.push({ x:snap.properties.location, y:v, id:p.id });
+  });
+  data.sort((a,b)=>a.x-b.x);
+  if(!data.length){ alert('No samples within 40 m of the line.'); return; }
+  const thr=CRITERIA[STATE.criterion][an];
+  if(xsChart) xsChart.destroy();
+  xsChart=new Chart($('xsChart'),{ type:'line', data:{datasets:[
+    { label:an+' along line', data:data, borderColor:'#1f6feb', backgroundColor:'#1f6feb', pointRadius:4, showLine:true, tension:0.2 },
+    { label:STATE.criterion+' '+thr, data:[{x:0,y:thr},{x:totalM,y:thr}], borderColor:'#d7191c', borderDash:[5,4], pointRadius:0 }
+  ]}, options:{ animation:false,
+    scales:{ x:{type:'linear',title:{display:true,text:'distance along line (m)'}}, y:{title:{display:true,text:an+' '+UNITS}} },
+    plugins:{ legend:{labels:{boxWidth:12,font:{size:10}}},
+      tooltip:{callbacks:{label:c=>c.raw && c.raw.id ? `${c.raw.id}: ${c.raw.y} ${UNITS}` : ''}} } }});
+}
+$('xsRun').addEventListener('click', crossSection);
+
+// ---- figure templates + print ----
+$('figTemplate').addEventListener('change', e=>{
+  const v=e.target.value; if(!v) return;
+  const tb=document.querySelector('.tb-title');
+  $('showTitleBlock').checked=true; $('titleBlock').classList.add('show');
+  const setCB=m=>{ STATE.colorBy=m; $('colorBy').value=m; };
+  const setAn=a=>{ STATE.analyte=a; $('analyte').value=a; };
+  if(v==='loc'){ setCB('round'); tb.innerText='Figure — ABP Sample Locations (Rounds 1 & 2)'; }
+  if(v==='hg'){ setCB('conc'); setAn('Hg'); tb.innerText='Figure — Mercury (Hg) Surface-Soil Results'; }
+  if(v==='as'){ setCB('conc'); setAn('As'); tb.innerText='Figure — Arsenic (As) Surface-Soil Results'; }
+  if(v==='pmb'){ setCB('pmb'); tb.innerText='Figure — PMB / Background Exceedances'; }
+  applyDisplay();
+});
+$('printBtn').addEventListener('click', ()=>window.print());
+
+/* =========================================================================
+   SECTION 17 — INIT
    ========================================================================= */
 function fitToData(){
   const pts = DATA.features.map(f=>[f.geometry.coordinates[1], f.geometry.coordinates[0]]);
