@@ -141,10 +141,11 @@ select:focus,input[type=text]:focus,input[type=number]:focus{border-color:var(--
 .popup .copybtn{margin-top:6px;font-size:11px;padding:3px 7px}
 
 /* North arrow (Leaflet control, stacks under zoom at top-left) */
-.na-ctrl{width:40px;height:50px;background:var(--overlay);border:1px solid var(--line);border-radius:6px;
-  text-align:center;font-size:10px;font-weight:700;color:var(--ink);padding-top:3px;box-shadow:0 1px 5px var(--shadow);
-  backdrop-filter:blur(3px);cursor:default}
-.na-ctrl svg{display:block;margin:1px auto 0}
+.na-ctrl{width:42px;height:auto;background:var(--overlay);border:1px solid var(--line);border-radius:6px;
+  text-align:center;font-size:11px;font-weight:700;color:var(--ink);padding:4px 0 3px;box-shadow:0 1px 5px var(--shadow);
+  backdrop-filter:blur(3px);cursor:default;line-height:1}
+.na-ctrl svg{display:block;margin:0 auto 2px}
+.na-ctrl .nlabel{display:block;line-height:1}
 .na-ctrl svg polygon{fill:var(--ink)}
 
 /* Title block — draggable + editable */
@@ -330,7 +331,7 @@ body:not(.with-panel) #coords{left:0}
 
       <hr style="border:none;border-top:1px solid var(--line);margin:9px 0">
       <label class="field">Auto-delineate contamination extent</label>
-      <p class="hint">Draws an editable polygon enclosing the area where the interpolated surface exceeds the active threshold.</p>
+      <p class="hint">Contours the interpolated surface at the active threshold, then clips the boundary to within the coverage radius of an exceeding sample so it never encloses empty ground. Drag the vertices to refine.</p>
       <div class="row">
         <select id="delinAnalyte" style="flex:2">
           <option value="Hg">Hg</option><option value="As">As</option><option value="Sb">Sb</option><option value="Tl">Tl</option>
@@ -338,7 +339,17 @@ body:not(.with-panel) #coords{left:0}
         <select id="delinCrit" style="flex:2">
           <option value="ROD">ROD</option><option value="PMB">PMB</option>
         </select>
-        <button class="btn" id="delinRun" style="flex:none">Run</button>
+      </div>
+      <label class="field">Coverage radius: <span id="delinRadV">40</span> m (<span id="delinRadFt">131</span> ft)</label>
+      <input type="range" id="delinRad" min="10" max="150" value="40" step="5">
+      <div class="row" style="margin-top:4px">
+        <label class="checkrow" style="margin:0"><input type="checkbox" id="delinSmooth" checked> Smooth</label>
+        <label class="checkrow" style="margin:0"><input type="checkbox" id="delinShowPts"> Show inside pts</label>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn primary" id="delinRun" style="flex:2">Delineate</button>
+        <button class="btn" id="delinEdit" style="flex:1">Edit</button>
+        <button class="btn" id="delinClear" style="flex:1">Clear</button>
       </div>
       <div id="delinMsg" class="hint"></div>
 
@@ -598,7 +609,7 @@ const NorthArrow = L.Control.extend({
   onAdd:function(){
     const d = L.DomUtil.create('div','na-ctrl leaflet-control');
     d.id = 'northArrow';
-    d.innerHTML = '<svg width="20" height="34" viewBox="0 0 20 34"><polygon points="10,0 17,20 10,15 3,20"/></svg>N';
+    d.innerHTML = '<svg width="20" height="30" viewBox="0 0 20 30"><polygon points="10,0 17,18 10,13 3,18"/></svg><span class="nlabel">N</span>';
     return d;
   }
 });
@@ -1612,33 +1623,84 @@ $('timePlay').addEventListener('click', ()=>{
     $('timeSlider').value=v; applyTime(v); }, 1100);
 });
 
-// ---- auto-delineation (Turf interpolate -> isobands at threshold) ----
+// ---- auto-delineation (IDW contour, clipped to a coverage mask of exceeding samples) ----
+let delinLayers = [];                 // tracked so a re-run replaces the prior delineation
+function clearDelineation(){
+  delinLayers.forEach(l=>{ try{ drawnItems.removeLayer(l); }catch(e){} });
+  delinLayers = [];
+  $('delinEdit').textContent = 'Edit';
+}
+function delinPopup(an,thr,crit,layer){
+  const gj=layer.toGeoJSON();
+  return `<b>Delineation — ${an} ≥ ${thr} ${UNITS} (${crit})</b><br>${areaInfo(turf.area(gj))}${ptStatsHtml(gj)}`;
+}
 function autoDelineate(){
   const an=$('delinAnalyte').value, crit=$('delinCrit').value, thr=CRITERIA[crit][an];
-  const pts=DATA.features.filter(f=>f.properties.sampled && num(f.properties[an])!==null)
-    .map(f=>turf.point(f.geometry.coordinates,{v:f.properties[an]}));
-  if(pts.length<3){ $('delinMsg').textContent='Not enough sampled data for '+an+'.'; return; }
-  const fc=turf.featureCollection(pts);
-  let grid, bands, hull=null;
-  try{ grid=turf.interpolate(fc, 12, {gridType:'point', property:'v', units:'meters', weight:2}); }
+  const radM=+$('delinRad').value, smooth=$('delinSmooth').checked;
+  const sampled = DATA.features.filter(f=>f.properties.sampled && num(f.properties[an])!==null);
+  if(sampled.length<3){ $('delinMsg').textContent='Not enough sampled data for '+an+'.'; return; }
+  const exceed = sampled.filter(f=>num(f.properties[an])>=thr);
+  if(!exceed.length){ clearDelineation(); $('delinMsg').textContent=`No samples exceed ${thr} ${UNITS} (${crit}).`; return; }
+
+  const fc=turf.featureCollection(sampled.map(f=>turf.point(f.geometry.coordinates,{v:f.properties[an]})));
+  let grid, bands;
+  try{ grid=turf.interpolate(fc, 8, {gridType:'point', property:'v', units:'meters', weight:2.5}); }
   catch(e){ $('delinMsg').textContent='Interpolation failed: '+e.message; return; }
   try{ bands=turf.isobands(grid,[thr,1e12],{zProperty:'v'}); }
   catch(e){ $('delinMsg').textContent='Contouring failed: '+e.message; return; }
-  try{ hull=turf.convex(fc); }catch(e){}
-  let added=0;
+
+  // coverage mask = union of buffers around the EXCEEDING samples (keeps the boundary near real data)
+  let mask=null;
+  exceed.forEach(f=>{
+    const b=turf.buffer(turf.point(f.geometry.coordinates), radM, {units:'meters'});
+    try{ mask = mask ? turf.union(mask,b) : b; }catch(e){ if(!mask) mask=b; }
+  });
+
+  clearDelineation();
+  let added=0, totalM2=0;
   bands.features.forEach(bf=>{
     if(!bf.geometry) return;
-    let geom=bf;
-    if(hull){ try{ const c=turf.intersect(bf,hull); if(c) geom=c; }catch(e){} }
-    L.geoJSON(geom,{ style:{color:'#d7191c',weight:2,fillColor:'#d7191c',fillOpacity:0.18,dashArray:'5,3'} })
-      .eachLayer(l=>{ drawnItems.addLayer(l); l.bindPopup(`Auto-delineated: ${an} ≥ ${thr} ${UNITS} (${crit})`);
-        l.on('pm:edit pm:update',()=>scheduleAutosave()); added++; });
+    turf.flatten(bf).features.forEach(band=>{
+      let clip=band;
+      if(mask){ try{ clip=turf.intersect(band,mask); }catch(e){ clip=null; } }
+      if(!clip) return;
+      turf.flatten(clip).features.forEach(piece=>{
+        let g=piece;
+        if(smooth){ try{ const sm=turf.polygonSmooth(piece,{iterations:2}); if(sm.features&&sm.features[0]) g=sm.features[0]; }catch(e){} }
+        const m2=turf.area(g); if(m2<10) return;          // drop slivers
+        totalM2+=m2;
+        L.geoJSON(g,{ style:{color:'#d7191c',weight:2.5,fillColor:'#d7191c',fillOpacity:0.2,dashArray:'6,3'} })
+          .eachLayer(l=>{
+            drawnItems.addLayer(l); delinLayers.push(l);
+            l.bindPopup(delinPopup(an,thr,crit,l));
+            l.on('pm:edit pm:update',()=>{ l.setPopupContent(delinPopup(an,thr,crit,l)); scheduleAutosave(); });
+            added++;
+          });
+      });
+    });
   });
-  $('delinMsg').textContent = added ? `Delineated ${an} ≥ ${thr} ${UNITS} (${added} polygon(s)). Editable via Draw tools.`
-                                    : `No area exceeds ${thr} ${UNITS}.`;
+  if($('delinShowPts').checked) exceed.forEach(f=>{
+    const c=f.geometry.coordinates;
+    const dot=L.circleMarker([c[1],c[0]],{radius:3,color:'#7a0000',weight:1,fillColor:'#d7191c',fillOpacity:.9});
+    drawnItems.addLayer(dot); delinLayers.push(dot);
+  });
+  $('delinMsg').innerHTML = added
+    ? `<b>${an} ≥ ${thr} ${UNITS} (${crit})</b><br>${areaInfo(totalM2)}<br>${exceed.length} exceeding sample(s) of ${sampled.length}. Click <b>Edit</b> to drag the boundary.`
+    : `No mapped exceedance area within ${radM} m of an exceeding sample.`;
   scheduleAutosave();
 }
 $('delinRun').addEventListener('click', autoDelineate);
+$('delinClear').addEventListener('click', ()=>{ clearDelineation(); $('delinMsg').textContent='Cleared.'; scheduleAutosave(); });
+$('delinEdit').addEventListener('click', ()=>{
+  if(!delinLayers.length){ $('delinMsg').textContent='Run a delineation first.'; return; }
+  const editing = delinLayers.some(l=>l.pm && l.pm.enabled());
+  delinLayers.forEach(l=>{ if(l.pm){ editing ? l.pm.disable() : l.pm.enable({allowSelfIntersection:false}); } });
+  $('delinEdit').textContent = editing ? 'Edit' : 'Done';
+});
+$('delinRad').addEventListener('input', e=>{
+  $('delinRadV').textContent=e.target.value;
+  $('delinRadFt').textContent=Math.round(e.target.value*3.28084);
+});
 
 // ---- cross-section profile (nearest samples along a drawn line) ----
 let xsChart=null;
