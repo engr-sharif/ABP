@@ -342,6 +342,8 @@ body:not(.with-panel) #coords{left:0}
       </div>
       <label class="field">Coverage radius: <span id="delinRadV">40</span> m (<span id="delinRadFt">131</span> ft)</label>
       <input type="range" id="delinRad" min="10" max="150" value="40" step="5">
+      <label class="field">Excavation depth for volume (ft)</label>
+      <input type="number" id="delinDepth" value="2" min="0" step="0.25">
       <div class="row" style="margin-top:4px">
         <label class="checkrow" style="margin:0"><input type="checkbox" id="delinSmooth" checked> Smooth</label>
         <label class="checkrow" style="margin:0"><input type="checkbox" id="delinShowPts"> Show inside pts</label>
@@ -1114,8 +1116,9 @@ function applyShapeStyle(layer){
     });
   }
 }
-function areaInfo(m2){
-  const ft2=m2*10.7639104, ac=m2/4046.8564224, depth=parseFloat($('digDepth').value)||0;
+function areaInfo(m2, depth){
+  if(depth===undefined) depth=parseFloat($('digDepth').value)||0;
+  const ft2=m2*10.7639104, ac=m2/4046.8564224;
   const cy = depth>0 ? ft2*depth/27 : null;
   return `Area: ${ft2.toLocaleString(undefined,{maximumFractionDigits:0})} ft² · ${ac.toFixed(3)} ac · ${m2.toLocaleString(undefined,{maximumFractionDigits:0})} m²`
        + (cy!==null ? `<br>Volume @ ${depth} ft = <b>${cy.toLocaleString(undefined,{maximumFractionDigits:0})} yd³</b>` : '');
@@ -1625,14 +1628,40 @@ $('timePlay').addEventListener('click', ()=>{
 
 // ---- auto-delineation (IDW contour, clipped to a coverage mask of exceeding samples) ----
 let delinLayers = [];                 // tracked so a re-run replaces the prior delineation
+let delinMeta = null;                 // { an, thr, crit, nSampled } of the active delineation
+const delinDepth = ()=>parseFloat($('delinDepth').value)||0;
 function clearDelineation(){
   delinLayers.forEach(l=>{ try{ drawnItems.removeLayer(l); }catch(e){} });
-  delinLayers = [];
+  delinLayers = []; delinMeta = null;
   $('delinEdit').textContent = 'Edit';
 }
-function delinPopup(an,thr,crit,layer){
-  const gj=layer.toGeoJSON();
-  return `<b>Delineation — ${an} ≥ ${thr} ${UNITS} (${crit})</b><br>${areaInfo(turf.area(gj))}${ptStatsHtml(gj)}`;
+function delinPolys(){ return delinLayers.filter(l=>l instanceof L.Polygon); }
+function delinPopup(layer){
+  const m=delinMeta, gj=layer.toGeoJSON();
+  return `<b>Delineation — ${m.an} ≥ ${m.thr} ${UNITS} (${m.crit})</b><br>${areaInfo(turf.area(gj), delinDepth())}${ptStatsHtml(gj)}`;
+}
+// recompute total area/volume (+ exceeding samples enclosed) across all delineation polygons
+function delinSummary(){
+  if(!delinMeta){ return; }
+  const polys=delinPolys();
+  if(!polys.length){ $('delinMsg').innerHTML=`No mapped exceedance area.`; return; }
+  let m2=0, enclosed=new Set();
+  const exPts=DATA.features.filter(f=>f.properties.sampled && num(f.properties[delinMeta.an])>=delinMeta.thr);
+  polys.forEach(l=>{
+    const gj=l.toGeoJSON(); m2+=turf.area(gj);
+    exPts.forEach(f=>{ if(turf.booleanPointInPolygon(turf.point(f.geometry.coordinates), gj)) enclosed.add(f.properties.id); });
+  });
+  $('delinMsg').innerHTML =
+    `<b>${delinMeta.an} ≥ ${delinMeta.thr} ${UNITS} (${delinMeta.crit})</b><br>`+
+    `${areaInfo(m2, delinDepth())}<br>`+
+    `${enclosed.size} of ${exPts.length} exceeding sample(s) enclosed · ${polys.length} polygon(s)`;
+}
+function attachDelinLive(l){
+  const upd=()=>{ if(l.getPopup()) l.setPopupContent(delinPopup(l)); delinSummary(); };
+  // pm:markerdrag / pm:drag fire continuously while dragging -> real-time recalc
+  l.on('pm:markerdrag pm:drag', upd);
+  l.on('pm:edit pm:update pm:dragend pm:markerdragend pm:vertexadded pm:vertexremoved',
+       ()=>{ upd(); scheduleAutosave(); });
 }
 function autoDelineate(){
   const an=$('delinAnalyte').value, crit=$('delinCrit').value, thr=CRITERIA[crit][an];
@@ -1657,7 +1686,8 @@ function autoDelineate(){
   });
 
   clearDelineation();
-  let added=0, totalM2=0;
+  delinMeta = { an, thr, crit, nSampled:sampled.length };
+  let added=0;
   bands.features.forEach(bf=>{
     if(!bf.geometry) return;
     turf.flatten(bf).features.forEach(band=>{
@@ -1668,12 +1698,10 @@ function autoDelineate(){
         let g=piece;
         if(smooth){ try{ const sm=turf.polygonSmooth(piece,{iterations:2}); if(sm.features&&sm.features[0]) g=sm.features[0]; }catch(e){} }
         const m2=turf.area(g); if(m2<10) return;          // drop slivers
-        totalM2+=m2;
         L.geoJSON(g,{ style:{color:'#d7191c',weight:2.5,fillColor:'#d7191c',fillOpacity:0.2,dashArray:'6,3'} })
           .eachLayer(l=>{
             drawnItems.addLayer(l); delinLayers.push(l);
-            l.bindPopup(delinPopup(an,thr,crit,l));
-            l.on('pm:edit pm:update',()=>{ l.setPopupContent(delinPopup(an,thr,crit,l)); scheduleAutosave(); });
+            l.bindPopup(delinPopup(l)); attachDelinLive(l);
             added++;
           });
       });
@@ -1684,15 +1712,14 @@ function autoDelineate(){
     const dot=L.circleMarker([c[1],c[0]],{radius:3,color:'#7a0000',weight:1,fillColor:'#d7191c',fillOpacity:.9});
     drawnItems.addLayer(dot); delinLayers.push(dot);
   });
-  $('delinMsg').innerHTML = added
-    ? `<b>${an} ≥ ${thr} ${UNITS} (${crit})</b><br>${areaInfo(totalM2)}<br>${exceed.length} exceeding sample(s) of ${sampled.length}. Click <b>Edit</b> to drag the boundary.`
-    : `No mapped exceedance area within ${radM} m of an exceeding sample.`;
+  if(added) delinSummary();
+  else $('delinMsg').innerHTML = `No mapped exceedance area within ${radM} m of an exceeding sample.`;
   scheduleAutosave();
 }
 $('delinRun').addEventListener('click', autoDelineate);
 $('delinClear').addEventListener('click', ()=>{ clearDelineation(); $('delinMsg').textContent='Cleared.'; scheduleAutosave(); });
 $('delinEdit').addEventListener('click', ()=>{
-  if(!delinLayers.length){ $('delinMsg').textContent='Run a delineation first.'; return; }
+  if(!delinPolys().length){ $('delinMsg').textContent='Run a delineation first.'; return; }
   const editing = delinLayers.some(l=>l.pm && l.pm.enabled());
   delinLayers.forEach(l=>{ if(l.pm){ editing ? l.pm.disable() : l.pm.enable({allowSelfIntersection:false}); } });
   $('delinEdit').textContent = editing ? 'Edit' : 'Done';
@@ -1700,6 +1727,11 @@ $('delinEdit').addEventListener('click', ()=>{
 $('delinRad').addEventListener('input', e=>{
   $('delinRadV').textContent=e.target.value;
   $('delinRadFt').textContent=Math.round(e.target.value*3.28084);
+});
+// changing the depth re-computes volume immediately (panel + any open popup)
+$('delinDepth').addEventListener('input', ()=>{
+  delinSummary();
+  delinPolys().forEach(l=>{ if(l.getPopup()&&l.isPopupOpen&&l.isPopupOpen()) l.setPopupContent(delinPopup(l)); });
 });
 
 // ---- cross-section profile (nearest samples along a drawn line) ----
