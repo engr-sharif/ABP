@@ -196,6 +196,133 @@ body:not(.with-panel) #coords{left:0}
     </div>
   </div>
 
+  <div class="section" data-sec="layers">
+    <h2>Layers <span class="chev">▾</span></h2>
+    <div class="body">
+      <label class="checkrow"><input type="checkbox" id="togglePoints" checked> Sample points</label>
+      <label class="checkrow"><input type="checkbox" id="toggleHeat"> Heat map (kernel density)</label>
+      <div id="heatCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
+        <label class="field">Weight by</label>
+        <select id="heatAnalyte">
+          <option value="Hg">Mercury (Hg)</option><option value="As">Arsenic (As)</option>
+          <option value="Sb">Antimony (Sb)</option><option value="Tl">Thallium (Tl)</option>
+        </select>
+        <label class="field">Radius <span id="heatRadiusV">28</span></label>
+        <input type="range" id="heatRadius" min="8" max="80" value="28">
+        <label class="field">Blur <span id="heatBlurV">20</span></label>
+        <input type="range" id="heatBlur" min="1" max="50" value="20">
+        <label class="field">Max intensity <span id="heatMaxV">1.0</span></label>
+        <input type="range" id="heatMax" min="0.1" max="1" step="0.05" value="1">
+        <label class="field">Opacity <span id="heatOpV">0.75</span></label>
+        <input type="range" id="heatOp" min="0.1" max="1" step="0.05" value="0.75">
+        <label class="checkrow"><input type="checkbox" id="heatLog" checked> Log-weight (Hg)</label>
+      </div>
+      <label class="checkrow"><input type="checkbox" id="toggleIDW"> IDW surface (clipped to hull)</label>
+      <div id="idwCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
+        <label class="field">Surface analyte</label>
+        <select id="idwAnalyte">
+          <option value="Hg">Mercury (Hg)</option><option value="As">Arsenic (As)</option>
+          <option value="Sb">Antimony (Sb)</option><option value="Tl">Thallium (Tl)</option>
+        </select>
+        <label class="field">Grid resolution <span id="idwResV">90</span> px</label>
+        <input type="range" id="idwRes" min="40" max="160" step="10" value="90">
+        <label class="field">IDW power <span id="idwPowV">2</span></label>
+        <input type="range" id="idwPow" min="1" max="4" step="0.5" value="2">
+        <label class="field">Opacity <span id="idwOpV">0.7</span></label>
+        <input type="range" id="idwOp" min="0.1" max="1" step="0.05" value="0.7">
+        <button class="btn" id="idwRefresh">Rebuild surface</button>
+      </div>
+      <label class="checkrow"><input type="checkbox" id="toggleGrid"> Data-gap grid</label>
+      <div id="gridCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
+        <label class="field">Cell size (ft)</label>
+        <select id="gridSize"><option>25</option><option selected>50</option><option>75</option><option>100</option></select>
+      </div>
+    </div>
+  </div>
+
+  <div class="section" data-sec="draw">
+    <h2>Draw &amp; Measure <span class="chev">▾</span></h2>
+    <div class="body">
+      <p class="hint">Use the toolbar on the map (top-right) to draw lines, polygons, rectangles, circles, and text. Lines show length; polygons show area + in-polygon stats. Vertices snap to samples.</p>
+      <label class="field">Shape style</label>
+      <div class="row">
+        <span>Line<input type="color" id="styleStroke" value="#1f6feb" style="width:100%"></span>
+        <span>Fill<input type="color" id="styleFill" value="#1f6feb" style="width:100%"></span>
+      </div>
+      <div class="row">
+        <span>Weight<input type="number" id="styleWeight" value="3" min="1" max="10"></span>
+        <span>Fill op<input type="number" id="styleFillOp" value="0.2" min="0" max="1" step="0.05"></span>
+      </div>
+      <label class="checkrow"><input type="checkbox" id="styleDash"> Dashed line</label>
+      <label class="field">Excavation depth for volume (ft)</label>
+      <input type="number" id="digDepth" value="2" min="0" step="0.5">
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="clearDraw">Clear all shapes</button>
+      </div>
+      <div id="measureOut" class="hint"></div>
+    </div>
+  </div>
+
+  <div class="section" data-sec="filters">
+    <h2>Filters <span class="chev">▾</span></h2>
+    <div class="body">
+      <label class="field">Round</label>
+      <select id="fRound"><option value="both">Both</option><option value="1">Round 1 only</option><option value="2">Round 2 only</option></select>
+      <label class="field">Sampled status</label>
+      <select id="fSampled"><option value="all">All</option><option value="yes">Sampled only</option><option value="no">Not sampled only</option></select>
+      <label class="field">Exceedance</label>
+      <select id="fExceed">
+        <option value="all">All</option>
+        <option value="rod">ROD exceedances only</option>
+        <option value="pmb">PMB exceedances only</option>
+        <option value="clean">Clean (passes both)</option>
+      </select>
+      <label class="field">Depth</label>
+      <select id="fDepth"><option value="all">All</option><option value="surface">Surface only</option><option value="deep">Has deep</option></select>
+      <label class="field">Min <span id="fThrAnalyte">Hg</span> concentration: &gt; <span id="fThrV">0</span> mg/kg</label>
+      <input type="range" id="fThr" min="0" max="2700" value="0" step="1">
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="searchId" placeholder="Zoom to ID (e.g. W01)">
+        <button class="btn" id="searchBtn" style="flex:none">Go</button>
+      </div>
+      <button class="btn" id="resetFilters" style="margin-top:8px">Reset filters</button>
+    </div>
+  </div>
+
+  <div class="section" data-sec="stats">
+    <h2>Live Stats <span class="chev">▾</span></h2>
+    <div class="body" id="statsBody"></div>
+  </div>
+
+  <div class="section closed" data-sec="om">
+    <h2>OM vs Shallow Hg (R2) <span class="chev">▾</span></h2>
+    <div class="body">
+      <p class="hint">Round-2 humus-layer Hg vs co-located shallow soil Hg. Points above the 1:1 line have higher Hg in organic matter.</p>
+      <canvas id="omChart" height="220"></canvas>
+    </div>
+  </div>
+
+  <div class="section" data-sec="io">
+    <h2>Export &amp; Session <span class="chev">▾</span></h2>
+    <div class="body">
+      <label class="checkrow"><input type="checkbox" id="showTitleBlock"> Show title block (for figures)</label>
+      <button class="btn primary" id="exportPng" style="width:100%;margin:4px 0">Export map as PNG figure</button>
+      <div class="row">
+        <button class="btn" id="exportShapes">Shapes → GeoJSON</button>
+        <button class="btn" id="exportCsv">Points → CSV</button>
+      </div>
+      <label class="field" style="margin-top:8px">Import GeoJSON (data or shapes)</label>
+      <input type="file" id="importFile" accept=".geojson,.json">
+      <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+      <div class="row">
+        <button class="btn" id="saveSession">Save session</button>
+        <button class="btn" id="loadSession">Load session</button>
+      </div>
+      <label class="checkrow"><input type="checkbox" id="autoSave" checked> Auto-save to browser</label>
+      <div id="sessionMsg" class="hint"></div>
+    </div>
+  </div>
+
 </div>
 <div id="panelToggle" title="Collapse / expand panel">‹</div>
 
@@ -233,10 +360,12 @@ const ANALYTES = ['Hg','As','Sb','Tl'];
 const ANALYTE_LABEL = {Hg:'Mercury (Hg)',As:'Arsenic (As)',Sb:'Antimony (Sb)',Tl:'Thallium (Tl)'};
 const UNITS = DATA.metadata.units || 'mg/kg';
 
-// UI state (extended in later phases)
+// UI state
 const STATE = {
   colorBy:'rod', analyte:'Hg', criterion:'ROD',
-  showLabels:false, logScale:true
+  showLabels:false, logScale:true,
+  showPoints:true,
+  filters:{ round:'both', sampled:'all', exceed:'all', depth:'all', thr:0 }
 };
 
 document.getElementById('unvalidated').title = DATA.metadata.note || 'Round 2 data is unvalidated.';
@@ -257,11 +386,11 @@ const map = L.map('map', { zoomControl:true, maxZoom:22, preferCanvas:false });
 
 const bases = {
   imagery: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            { maxZoom:22, maxNativeZoom:19, attribution:'Imagery © Esri, Maxar, Earthstar Geographics' }),
+            { maxZoom:22, maxNativeZoom:19, crossOrigin:'anonymous', attribution:'Imagery © Esri, Maxar, Earthstar Geographics' }),
   topo:    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-            { maxZoom:22, maxNativeZoom:19, attribution:'© Esri' }),
+            { maxZoom:22, maxNativeZoom:19, crossOrigin:'anonymous', attribution:'© Esri' }),
   osm:     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            { maxZoom:19, attribution:'© OpenStreetMap contributors' }),
+            { maxZoom:19, crossOrigin:'anonymous', attribution:'© OpenStreetMap contributors' }),
   blank:   L.tileLayer('', { maxZoom:22 })
 };
 let currentBase = bases.imagery.addTo(map);
@@ -433,11 +562,30 @@ function popupHtml(p){
   </div>`;
 }
 
+// ---- filter predicate (SECTION 8 uses STATE.filters) --------------------
+function passesFilter(p){
+  const f = STATE.filters;
+  if(f.round!=='both' && String(p.round)!==f.round) return false;
+  if(f.sampled==='yes' && !p.sampled) return false;
+  if(f.sampled==='no'  &&  p.sampled) return false;
+  if(f.exceed==='rod'  && p.rod_exceed!=='YES') return false;
+  if(f.exceed==='pmb'  && p.pmb_exceed!=='YES') return false;
+  if(f.exceed==='clean'&& !(p.rod_exceed==='NO' && p.pmb_exceed==='NO')) return false;
+  if(f.depth==='surface' && hasDeep(p)) return false;
+  if(f.depth==='deep'    && !hasDeep(p)) return false;
+  if(f.thr>0){ const v=num(p[STATE.analyte]); if(v===null || v<=f.thr) return false; }
+  return true;
+}
+// features currently passing the filter (used by stats, heat, IDW, CSV)
+function filteredFeatures(){ return DATA.features.filter(f=>passesFilter(f.properties)); }
+
 function buildMarkers(){
   sampleLayer.clearLayers();
   for(const k in markerById) delete markerById[k];
+  if(!STATE.showPoints) return;
   DATA.features.forEach(f=>{
     const p = f.properties;
+    if(!passesFilter(p)) return;
     const [lon,lat] = f.geometry.coordinates;
     const m = L.marker([lat,lon], { icon:svgMarker(p), pane:'markerPane' });
     m.featureProps = p;
@@ -448,9 +596,10 @@ function buildMarkers(){
     m.addTo(sampleLayer);
     markerById[p.id] = m;
   });
+  // make sample points snappable targets for Geoman drawing
+  if(window.refreshSnapTargets) window.refreshSnapTargets();
 }
 
-// refresh marker styling only (cheaper than rebuild but rebuild is fine at n=94)
 function refreshMarkers(){ buildMarkers(); }
 
 /* =========================================================================
@@ -544,7 +693,476 @@ document.getElementById('legendHead').addEventListener('click', ()=>{
 });
 
 /* =========================================================================
-   SECTION 7 — INIT
+   SECTION 7 — FILTERS & LIVE STATS
+   ========================================================================= */
+STATE.layers = { heat:false, idw:false, grid:false };
+const $ = id => document.getElementById(id);
+
+function readFilters(){
+  STATE.filters.round   = $('fRound').value;
+  STATE.filters.sampled = $('fSampled').value;
+  STATE.filters.exceed  = $('fExceed').value;
+  STATE.filters.depth   = $('fDepth').value;
+  STATE.filters.thr     = +$('fThr').value;
+}
+function updateThrSlider(){
+  const [,hi] = analyteDomain(STATE.analyte);
+  $('fThr').max = Math.ceil(hi);
+  if(+$('fThr').value > hi){ $('fThr').value = 0; STATE.filters.thr = 0; }
+  $('fThrAnalyte').textContent = STATE.analyte;
+  $('fThrV').textContent = $('fThr').value;
+}
+function computeStats(feats){
+  const sampled = feats.filter(f=>f.properties.sampled);
+  const st = { n:feats.length, nSampled:sampled.length,
+    rod: feats.filter(f=>f.properties.rod_exceed==='YES').length,
+    pmb: feats.filter(f=>f.properties.pmb_exceed==='YES').length, perA:{} };
+  ANALYTES.forEach(an=>{
+    const vals = sampled.map(f=>num(f.properties[an])).filter(v=>v!==null).sort((a,b)=>a-b);
+    if(!vals.length){ st.perA[an]=null; return; }
+    const sum = vals.reduce((a,b)=>a+b,0);
+    const med = vals.length%2 ? vals[(vals.length-1)/2] : (vals[vals.length/2-1]+vals[vals.length/2])/2;
+    const thr = CRITERIA[STATE.criterion][an];
+    const exc = vals.filter(v=>v>thr).length;
+    st.perA[an] = { min:vals[0], mean:sum/vals.length, median:med, max:vals[vals.length-1], pctExc:100*exc/vals.length };
+  });
+  return st;
+}
+function renderStats(){
+  const st = computeStats(filteredFeatures());
+  let h = `<div class="statline"><span>Showing</span><b>${st.n}</b></div>
+    <div class="statline"><span>Sampled</span><b>${st.nSampled}</b></div>
+    <div class="statline"><span>ROD exceedances</span><b style="color:var(--red)">${st.rod}</b></div>
+    <div class="statline"><span>PMB exceedances</span><b style="color:var(--red)">${st.pmb}</b></div>`;
+  h += `<table class="stats-table"><tr><th>${UNITS}</th><th>min</th><th>mean</th><th>med</th><th>max</th><th>%&gt;${STATE.criterion}</th></tr>`;
+  ANALYTES.forEach(an=>{
+    const a = st.perA[an];
+    h += a ? `<tr><td class="an">${an}</td><td>${a.min}</td><td>${a.mean.toFixed(1)}</td><td>${a.median}</td><td>${a.max}</td><td>${a.pctExc.toFixed(0)}%</td></tr>`
+           : `<tr><td class="an">${an}</td><td colspan="5" style="text-align:center;color:#999">no data</td></tr>`;
+  });
+  $('statsBody').innerHTML = h + '</table>';
+}
+function applyFilters(){
+  readFilters(); updateThrSlider();
+  buildMarkers(); renderStats(); updateHeat(); updateIDW();
+  scheduleAutosave();
+}
+
+/* =========================================================================
+   SECTION 8 — HEAT MAP (Leaflet.heat, analyte-weighted)
+   ========================================================================= */
+let heatLayer = null;
+function heatPoints(){
+  const an = $('heatAnalyte').value;
+  const useLog = $('heatLog').checked && an==='Hg';
+  const [lo,hi] = analyteDomain(an);
+  return filteredFeatures().map(f=>{
+    const v = num(f.properties[an]); if(v===null || v<=0) return null;
+    let t;
+    if(useLog){ const llo=Math.log10(Math.max(lo,1e-6)), lhi=Math.log10(hi); t=(Math.log10(v)-llo)/((lhi-llo)||1); }
+    else t = (v-lo)/((hi-lo)||1);
+    return [f.geometry.coordinates[1], f.geometry.coordinates[0], Math.max(0.05,Math.min(1,t))];
+  }).filter(Boolean);
+}
+function updateHeat(){
+  if(!STATE.layers.heat){ if(heatLayer){ map.removeLayer(heatLayer); heatLayer=null; } return; }
+  const opts = { radius:+$('heatRadius').value, blur:+$('heatBlur').value, max:+$('heatMax').value, minOpacity:0.05 };
+  if(!heatLayer){ heatLayer = L.heatLayer(heatPoints(), opts).addTo(map); }
+  else { heatLayer.setLatLngs(heatPoints()); heatLayer.setOptions(opts); }
+  if(heatLayer._canvas) heatLayer._canvas.style.opacity = $('heatOp').value;
+}
+
+/* =========================================================================
+   SECTION 9 — IDW INTERPOLATION SURFACE (Turf hull clip + canvas overlay)
+   ========================================================================= */
+let idwOverlay = null;
+function hexToRgb(h){ const n=parseInt(h.slice(1),16); return [n>>16,(n>>8)&255,n&255]; }
+function buildIDW(){
+  const an = $('idwAnalyte').value;
+  const pts = filteredFeatures().filter(f=>num(f.properties[an])!==null);
+  if(pts.length < 3) return null;
+  const fc = turf.featureCollection(pts.map(f=>turf.point(f.geometry.coordinates,{v:f.properties[an]})));
+  let hull; try{ hull = turf.convex(fc); }catch(e){ hull=null; }
+  if(!hull) return null;
+  const [w,s,e,n] = turf.bbox(hull);
+  const res = +$('idwRes').value, pow = +$('idwPow').value;
+  const spanX = (e-w)||1e-9, spanY = (n-s)||1e-9;
+  let W,H;
+  if(spanX>=spanY){ W=res; H=Math.max(8,Math.round(res*spanY/spanX)); }
+  else { H=res; W=Math.max(8,Math.round(res*spanX/spanY)); }
+  const useLog = an==='Hg' && STATE.logScale;
+  const [lo,hi] = analyteDomain(an);
+  const llo=Math.log10(Math.max(lo,1e-6)), lhi=Math.log10(hi);
+  const samples = pts.map(f=>({x:f.geometry.coordinates[0], y:f.geometry.coordinates[1], v:f.properties[an]}));
+  const cv = document.createElement('canvas'); cv.width=W; cv.height=H;
+  const ctx = cv.getContext('2d'); const img = ctx.createImageData(W,H);
+  for(let row=0; row<H; row++){
+    const lat = n - ((row+0.5)/H)*(n-s);
+    for(let col=0; col<W; col++){
+      const lon = w + ((col+0.5)/W)*(e-w);
+      const idx = (row*W+col)*4;
+      if(!turf.booleanPointInPolygon(turf.point([lon,lat]), hull)){ img.data[idx+3]=0; continue; }
+      let nu=0, de=0, exact=null;
+      for(const sp of samples){
+        const dx=lon-sp.x, dy=lat-sp.y, d2=dx*dx+dy*dy;
+        if(d2<1e-12){ exact=sp.v; break; }
+        const wgt = 1/Math.pow(d2, pow/2);
+        nu += wgt*sp.v; de += wgt;
+      }
+      const val = exact!==null ? exact : nu/de;
+      let t = useLog ? (Math.log10(Math.max(val,1e-6))-llo)/((lhi-llo)||1) : (val-lo)/((hi-lo)||1);
+      t = Math.max(0,Math.min(1,t));
+      const rgb = hexToRgb(rampColor(t));
+      img.data[idx]=rgb[0]; img.data[idx+1]=rgb[1]; img.data[idx+2]=rgb[2]; img.data[idx+3]=255;
+    }
+  }
+  ctx.putImageData(img,0,0);
+  return { url:cv.toDataURL(), bounds:[[s,w],[n,e]] };
+}
+function updateIDW(){
+  if(idwOverlay){ map.removeLayer(idwOverlay); idwOverlay=null; }
+  if(!STATE.layers.idw) return;
+  const r = buildIDW(); if(!r) return;
+  idwOverlay = L.imageOverlay(r.url, r.bounds, { opacity:+$('idwOp').value, interactive:false }).addTo(map);
+}
+
+/* =========================================================================
+   SECTION 10 — DATA-GAP GRID
+   ========================================================================= */
+let gridLayer = null;
+function updateGrid(){
+  if(gridLayer){ map.removeLayer(gridLayer); gridLayer=null; }
+  if(!STATE.layers.grid) return;
+  const cell = +$('gridSize').value;                      // ft
+  const samp = DATA.features.filter(f=>f.properties.sampled).map(f=>f.geometry.coordinates);
+  const lats = DATA.features.map(f=>f.geometry.coordinates[1]);
+  const lons = DATA.features.map(f=>f.geometry.coordinates[0]);
+  const s=Math.min(...lats), n=Math.max(...lats), w=Math.min(...lons), e=Math.max(...lons);
+  const latFt=364000, lonFt=364000*Math.cos(s*Math.PI/180);
+  const dLat=cell/latFt, dLon=cell/lonFt;
+  gridLayer = L.layerGroup();
+  for(let lat=s; lat<n+dLat; lat+=dLat){
+    for(let lon=w; lon<e+dLon; lon+=dLon){
+      const cnt = samp.filter(c=>c[0]>=lon && c[0]<lon+dLon && c[1]>=lat && c[1]<lat+dLat).length;
+      const col = cnt===0 ? '#d7191c' : cnt<=2 ? '#fdae61' : '#1a9641';
+      L.rectangle([[lat,lon],[lat+dLat,lon+dLon]],
+        { color:'#666', weight:0.5, fillColor:col, fillOpacity:0.22, interactive:false }).addTo(gridLayer);
+    }
+  }
+  gridLayer.addTo(map);
+}
+
+/* =========================================================================
+   SECTION 11 — DRAWING, MEASUREMENT & VOLUME (Leaflet-Geoman + Turf)
+   ========================================================================= */
+const drawnItems = L.featureGroup().addTo(map);
+window.refreshSnapTargets = function(){};   // sample markers on map are auto-snap targets
+
+map.pm.addControls({
+  position:'topright',
+  drawCircleMarker:false, drawText:true,
+  drawMarker:true, drawPolyline:true, drawPolygon:true, drawRectangle:true, drawCircle:true,
+  editMode:true, dragMode:true, removalMode:true, rotateMode:false, cutPolygon:false
+});
+map.pm.setGlobalOptions({ snappable:true, snapDistance:18, continueDrawing:false });
+
+function applyShapeStyle(layer){
+  if(layer.setStyle){
+    layer.setStyle({
+      color:$('styleStroke').value, weight:+$('styleWeight').value,
+      fillColor:$('styleFill').value, fillOpacity:+$('styleFillOp').value,
+      dashArray:$('styleDash').checked ? '6,4' : null
+    });
+  }
+}
+function areaInfo(m2){
+  const ft2=m2*10.7639104, ac=m2/4046.8564224, depth=parseFloat($('digDepth').value)||0;
+  const cy = depth>0 ? ft2*depth/27 : null;
+  return `Area: ${ft2.toLocaleString(undefined,{maximumFractionDigits:0})} ft² · ${ac.toFixed(3)} ac · ${m2.toLocaleString(undefined,{maximumFractionDigits:0})} m²`
+       + (cy!==null ? `<br>Volume @ ${depth} ft = <b>${cy.toLocaleString(undefined,{maximumFractionDigits:0})} yd³</b>` : '');
+}
+function ptStatsHtml(poly){
+  const inside = DATA.features.filter(f=>f.properties.sampled &&
+                  turf.booleanPointInPolygon(turf.point(f.geometry.coordinates), poly));
+  if(!inside.length) return `<br><i>0 samples inside</i>`;
+  let s = `<br><b>${inside.length}</b> sample(s) inside:`;
+  ANALYTES.forEach(an=>{
+    const vals = inside.map(f=>num(f.properties[an])).filter(v=>v!==null);
+    if(vals.length){
+      const mean=(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1);
+      s += `<br>&nbsp;${an}: ${Math.min(...vals)} / ${mean} / ${Math.max(...vals)} (min/mean/max)`;
+    }
+  });
+  return s;
+}
+function shapeStats(layer){
+  let poly=null, html='', kind='';
+  if(layer instanceof L.Circle){
+    kind='Circle';
+    const r=layer.getRadius(), c=layer.getLatLng();
+    poly=turf.circle([c.lng,c.lat], r/1000, {units:'kilometers',steps:64});
+    html=`<b>Circle</b> · r=${(r*3.28084).toFixed(0)} ft (${r.toFixed(0)} m)<br>${areaInfo(Math.PI*r*r)}` + ptStatsHtml(poly);
+  } else if(layer instanceof L.Polygon){
+    kind='Polygon';
+    const gj=layer.toGeoJSON(); poly=gj;
+    html=`<b>Polygon</b><br>${areaInfo(turf.area(gj))}` + ptStatsHtml(poly);
+  } else if(layer instanceof L.Polyline){
+    kind='Line';
+    const km=turf.length(layer.toGeoJSON(),{units:'kilometers'});
+    html=`<b>Line</b> · ${(km*3280.84).toFixed(1)} ft (${(km*1000).toFixed(1)} m)`;
+  } else { kind='Annotation'; html='<b>Annotation</b>'; }
+  return { kind, html, poly };
+}
+function attachShapeInfo(layer){
+  const info = shapeStats(layer);
+  if(info.kind!=='Annotation'){
+    if(layer.getPopup()) layer.setPopupContent(info.html); else layer.bindPopup(info.html);
+    $('measureOut').innerHTML = info.html;
+  }
+}
+map.on('pm:create', e=>{
+  const layer = e.layer;
+  applyShapeStyle(layer);
+  drawnItems.addLayer(layer);
+  attachShapeInfo(layer);
+  layer.on('pm:edit pm:dragend pm:markerdragend pm:update', ()=>{ attachShapeInfo(layer); scheduleAutosave(); });
+  scheduleAutosave();
+});
+map.on('pm:remove', ()=>scheduleAutosave());
+
+function shapesToGeoJSON(){
+  const fc = { type:'FeatureCollection', features:[] };
+  drawnItems.eachLayer(l=>{
+    let gj;
+    if(l instanceof L.Circle){ gj=l.toGeoJSON(); gj.properties=gj.properties||{}; gj.properties.radius=l.getRadius(); }
+    else gj = l.toGeoJSON();
+    gj.properties = gj.properties || {};
+    if(l.options) gj.properties.style = { color:l.options.color, weight:l.options.weight,
+      fillColor:l.options.fillColor, fillOpacity:l.options.fillOpacity, dashArray:l.options.dashArray };
+    if(l.pm && l.pm._textMarker && l.getTooltip) gj.properties.text = l.getTooltip() ? l.getTooltip().getContent() : '';
+    fc.features.push(gj);
+  });
+  return fc;
+}
+function loadShapesGeoJSON(gj){
+  if(!gj || !gj.features) return;
+  gj.features.forEach(ft=>{
+    let layer; const pr=ft.properties||{};
+    if(ft.geometry.type==='Point' && pr.radius){
+      layer = L.circle([ft.geometry.coordinates[1],ft.geometry.coordinates[0]], { radius:pr.radius });
+    } else if(ft.geometry.type==='Point'){
+      layer = L.marker([ft.geometry.coordinates[1],ft.geometry.coordinates[0]]);
+      if(pr.text) layer.bindTooltip(pr.text,{permanent:true,direction:'center',className:'sample-label'});
+    } else {
+      layer = L.geoJSON(ft).getLayers()[0];
+    }
+    if(layer.setStyle && pr.style) layer.setStyle(pr.style);
+    drawnItems.addLayer(layer);
+    attachShapeInfo(layer);
+    layer.on('pm:edit pm:dragend pm:update', ()=>{ attachShapeInfo(layer); scheduleAutosave(); });
+  });
+}
+$('clearDraw').addEventListener('click', ()=>{ drawnItems.clearLayers(); $('measureOut').innerHTML=''; scheduleAutosave(); });
+$('digDepth').addEventListener('change', ()=>{ drawnItems.eachLayer(l=>attachShapeInfo(l)); });
+
+/* =========================================================================
+   SECTION 12 — OM vs SHALLOW Hg SCATTER (Chart.js)
+   ========================================================================= */
+let omChart=null, omBuilt=false;
+function buildOmChart(){
+  const r2 = DATA.features.filter(f=>f.properties.round===2 && isNum(f.properties.Hg_OM) && isNum(f.properties.Hg));
+  if(!r2.length) return;
+  const colByEff = {'OM higher':'#d7191c','OM lower':'#2c7bb6','~equal':'#9e9e9e'};
+  const groups={};
+  r2.forEach(f=>{ const k=f.properties.OM_effect||'?'; (groups[k]=groups[k]||[]).push({x:f.properties.Hg,y:f.properties.Hg_OM,id:f.properties.id}); });
+  const ds = Object.keys(groups).map(k=>({ label:k, data:groups[k], backgroundColor:colByEff[k]||'#666', pointRadius:4 }));
+  const maxV = Math.max(...r2.map(f=>Math.max(f.properties.Hg,f.properties.Hg_OM)));
+  ds.push({ label:'1:1', type:'line', data:[{x:1,y:1},{x:maxV,y:maxV}], borderColor:'#222', borderDash:[5,4], pointRadius:0, fill:false });
+  if(omChart) omChart.destroy();
+  omChart = new Chart($('omChart'), { type:'scatter', data:{datasets:ds}, options:{
+    responsive:true, animation:false,
+    scales:{ x:{type:'logarithmic',title:{display:true,text:'Shallow soil Hg (mg/kg)'}},
+             y:{type:'logarithmic',title:{display:true,text:'OM Hg (mg/kg)'}} },
+    plugins:{ legend:{labels:{boxWidth:12,font:{size:10}}},
+      tooltip:{callbacks:{label:c=>c.raw && c.raw.id ? `${c.raw.id}: soil ${c.raw.x}, OM ${c.raw.y}` : ''}} }
+  }});
+  omBuilt=true;
+}
+
+/* =========================================================================
+   SECTION 13 — EXPORT / IMPORT
+   ========================================================================= */
+function download(name, content, mime){
+  const b = new Blob([content], {type:mime||'text/plain'});
+  const u = URL.createObjectURL(b);
+  const a = document.createElement('a'); a.href=u; a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(u), 1000);
+}
+function exportPng(){
+  const el = $('map'); const r = el.getBoundingClientRect();
+  const msg = $('sessionMsg'); msg.textContent='Rendering figure…';
+  html2canvas(document.body, {
+    useCORS:true, allowTaint:false, backgroundColor:'#ffffff', scale:2, logging:false,
+    x:r.left, y:r.top, width:r.width, height:r.height,
+    scrollX:0, scrollY:0,
+    windowWidth:document.documentElement.clientWidth, windowHeight:document.documentElement.clientHeight,
+    ignoreElements: n => ['panel','panelToggle','topbar','coords'].includes(n.id)
+  }).then(canvas=>{
+    canvas.toBlob(b=>{ download('abp_figure.png', b, 'image/png'); msg.textContent='Figure exported.'; });
+  }).catch(err=>{ msg.textContent='PNG export failed (tile CORS?): '+err.message; });
+}
+function exportShapes(){
+  const fc = shapesToGeoJSON();
+  if(!fc.features.length){ $('sessionMsg').textContent='No shapes to export.'; return; }
+  download('abp_shapes.geojson', JSON.stringify(fc,null,2), 'application/geo+json');
+}
+function exportCsv(){
+  const feats = filteredFeatures();
+  const cols = ['id','round','sampled','lat','lon','Hg','As','Sb','Tl','Hg_deep','As_deep','Sb_deep','Tl_deep','Hg_OM','OM_effect','depth','coord_source','rod_exceed','rod_drivers','pmb_exceed','pmb_drivers'];
+  const esc = v => v==null ? '' : /[",\n]/.test(String(v)) ? '"'+String(v).replace(/"/g,'""')+'"' : String(v);
+  const rows = [cols.join(',')];
+  feats.forEach(f=>{ const p=f.properties; const o={...p, lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0]};
+    rows.push(cols.map(c=>esc(o[c])).join(',')); });
+  download('abp_points_filtered.csv', rows.join('\n'), 'text/csv');
+}
+function handleImport(file){
+  const rd = new FileReader();
+  rd.onload = ()=>{
+    let gj; try{ gj=JSON.parse(rd.result); }catch(e){ alert('Invalid JSON file.'); return; }
+    const looksData = gj.metadata || (gj.features && gj.features.some(f=>
+      f.geometry && f.geometry.type==='Point' && f.properties && ('rod_exceed' in f.properties || 'Hg' in f.properties)));
+    if(looksData && confirm('This looks like sample DATA. Load it (replaces current 94 points)?')){
+      DATA.features.length = 0; gj.features.forEach(f=>DATA.features.push(f));
+      if(gj.metadata && gj.metadata.criteria) Object.assign(DATA.metadata.criteria, gj.metadata.criteria);
+      updateThrSlider(); buildMarkers(); buildLegend(); renderStats(); updateHeat(); updateIDW(); updateGrid();
+      buildOmChart(); fitToData();
+      $('sessionMsg').textContent='Loaded '+DATA.features.length+' features.';
+    } else {
+      loadShapesGeoJSON(gj); $('sessionMsg').textContent='Loaded shapes from file.'; scheduleAutosave();
+    }
+  };
+  rd.readAsText(file);
+}
+
+/* =========================================================================
+   SECTION 14 — SESSION PERSISTENCE (localStorage)
+   ========================================================================= */
+const LS_KEY = 'abp_session_v1';
+let autosaveTimer=null;
+function scheduleAutosave(){
+  if(!$('autoSave') || !$('autoSave').checked) return;
+  clearTimeout(autosaveTimer); autosaveTimer=setTimeout(saveSession, 700);
+}
+function sessionData(){
+  return {
+    colorBy:STATE.colorBy, analyte:STATE.analyte, criterion:STATE.criterion,
+    showLabels:STATE.showLabels, logScale:STATE.logScale, showPoints:STATE.showPoints,
+    filters:STATE.filters, layers:STATE.layers,
+    base:$('baseSelect').value,
+    titleMain:document.querySelector('.tb-title').innerText,
+    titleSub:document.querySelector('.tb-sub').innerText,
+    showTitleBlock:$('showTitleBlock').checked,
+    shapes:shapesToGeoJSON()
+  };
+}
+function saveSession(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(sessionData()));
+    $('sessionMsg').textContent='Saved '+new Date().toLocaleTimeString(); }
+  catch(e){ $('sessionMsg').textContent='Save failed: '+e.message; }
+}
+function loadSession(silent){
+  let raw; try{ raw=localStorage.getItem(LS_KEY); }catch(e){ return; }
+  if(!raw){ if(!silent) $('sessionMsg').textContent='No saved session found.'; return; }
+  let d; try{ d=JSON.parse(raw); }catch(e){ return; }
+  const set=(id,v)=>{ const el=$(id); if(el!=null && v!=null){ if(el.type==='checkbox') el.checked=v; else el.value=v; } };
+  STATE.colorBy=d.colorBy||STATE.colorBy; set('colorBy',STATE.colorBy);
+  STATE.analyte=d.analyte||STATE.analyte; set('analyte',STATE.analyte);
+  STATE.criterion=d.criterion||STATE.criterion; set('criterion',STATE.criterion);
+  STATE.showLabels=!!d.showLabels; set('showLabels',STATE.showLabels);
+  STATE.logScale=d.logScale!==false; set('logScale',STATE.logScale);
+  STATE.showPoints=d.showPoints!==false; set('togglePoints',STATE.showPoints);
+  if(d.filters) Object.assign(STATE.filters,d.filters);
+  set('fRound',STATE.filters.round); set('fSampled',STATE.filters.sampled);
+  set('fExceed',STATE.filters.exceed); set('fDepth',STATE.filters.depth);
+  set('fThr',STATE.filters.thr);
+  if(d.layers) Object.assign(STATE.layers,d.layers);
+  set('toggleHeat',STATE.layers.heat); set('toggleIDW',STATE.layers.idw); set('toggleGrid',STATE.layers.grid);
+  $('heatCtl').style.display=STATE.layers.heat?'':'none';
+  $('idwCtl').style.display=STATE.layers.idw?'':'none';
+  $('gridCtl').style.display=STATE.layers.grid?'':'none';
+  if(d.base){ set('baseSelect',d.base); $('baseSelect').dispatchEvent(new Event('change')); }
+  if(d.titleMain) document.querySelector('.tb-title').innerText=d.titleMain;
+  if(d.titleSub) document.querySelector('.tb-sub').innerText=d.titleSub;
+  if(d.showTitleBlock){ $('showTitleBlock').checked=true; $('titleBlock').classList.add('show'); }
+  drawnItems.clearLayers(); loadShapesGeoJSON(d.shapes);
+  syncControlVisibility(); applyDisplay(); applyFilters(); updateGrid();
+  if(!silent) $('sessionMsg').textContent='Session loaded.';
+}
+
+/* =========================================================================
+   SECTION 15 — UI WIRING (Phase 2/3 controls)
+   ========================================================================= */
+// layer toggles + their control panels
+$('togglePoints').addEventListener('change', e=>{ STATE.showPoints=e.target.checked; buildMarkers(); scheduleAutosave(); });
+$('toggleHeat').addEventListener('change', e=>{ STATE.layers.heat=e.target.checked; $('heatCtl').style.display=e.target.checked?'':'none'; updateHeat(); scheduleAutosave(); });
+$('toggleIDW').addEventListener('change', e=>{ STATE.layers.idw=e.target.checked; $('idwCtl').style.display=e.target.checked?'':'none'; updateIDW(); scheduleAutosave(); });
+$('toggleGrid').addEventListener('change', e=>{ STATE.layers.grid=e.target.checked; $('gridCtl').style.display=e.target.checked?'':'none'; updateGrid(); scheduleAutosave(); });
+// heat controls
+['heatRadius','heatBlur','heatMax','heatOp'].forEach(id=>$(id).addEventListener('input', e=>{
+  const v=$(id+'V'); if(v) v.textContent=e.target.value; updateHeat();
+}));
+$('heatAnalyte').addEventListener('change', updateHeat);
+$('heatLog').addEventListener('change', updateHeat);
+// idw controls
+['idwRes','idwPow','idwOp'].forEach(id=>$(id).addEventListener('input', e=>{ const v=$(id+'V'); if(v) v.textContent=e.target.value; }));
+$('idwOp').addEventListener('input', updateIDW);
+$('idwRefresh').addEventListener('click', updateIDW);
+$('idwAnalyte').addEventListener('change', updateIDW);
+$('gridSize').addEventListener('change', updateGrid);
+// filters
+['fRound','fSampled','fExceed','fDepth'].forEach(id=>$(id).addEventListener('change', applyFilters));
+$('fThr').addEventListener('input', ()=>{ $('fThrV').textContent=$('fThr').value; applyFilters(); });
+$('resetFilters').addEventListener('click', ()=>{
+  $('fRound').value='both'; $('fSampled').value='all'; $('fExceed').value='all'; $('fDepth').value='all'; $('fThr').value=0;
+  applyFilters();
+});
+$('searchBtn').addEventListener('click', doSearch);
+$('searchId').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
+function doSearch(){
+  const id=$('searchId').value.trim().toUpperCase();
+  const f=DATA.features.find(f=>String(f.properties.id).toUpperCase()===id);
+  if(!f){ $('sessionMsg').textContent='ID not found: '+id; return; }
+  const ll=[f.geometry.coordinates[1],f.geometry.coordinates[0]];
+  map.flyTo(ll, 20, {duration:0.8});
+  const m=markerById[f.properties.id]; if(m) setTimeout(()=>m.openPopup(),850);
+}
+// export/import
+$('exportPng').addEventListener('click', exportPng);
+$('exportShapes').addEventListener('click', exportShapes);
+$('exportCsv').addEventListener('click', exportCsv);
+$('importFile').addEventListener('change', e=>{ if(e.target.files[0]) handleImport(e.target.files[0]); e.target.value=''; });
+// title block
+$('showTitleBlock').addEventListener('change', e=>{ $('titleBlock').classList.toggle('show', e.target.checked); scheduleAutosave(); });
+document.querySelectorAll('.tb-title,.tb-sub').forEach(el=>el.addEventListener('input', scheduleAutosave));
+// session
+$('saveSession').addEventListener('click', saveSession);
+$('loadSession').addEventListener('click', ()=>loadSession(false));
+// build OM chart lazily when its section is first opened
+document.querySelector('[data-sec="om"] > h2').addEventListener('click', ()=>{
+  const sec=document.querySelector('[data-sec="om"]');
+  if(!sec.classList.contains('closed') && !omBuilt) setTimeout(buildOmChart,60);
+});
+
+// extend applyDisplay (Phase 1 version) to refresh stats + density layers
+const _applyDisplay = applyDisplay;
+applyDisplay = function(){
+  _applyDisplay();
+  updateThrSlider(); renderStats(); updateHeat(); updateIDW();
+  scheduleAutosave();
+};
+
+/* =========================================================================
+   SECTION 16 — INIT
    ========================================================================= */
 function fitToData(){
   const pts = DATA.features.map(f=>[f.geometry.coordinates[1], f.geometry.coordinates[0]]);
@@ -553,7 +1171,10 @@ function fitToData(){
 buildMarkers();
 buildLegend();
 syncControlVisibility();
+updateThrSlider();
+renderStats();
 fitToData();
+loadSession(true);   // restore prior session if present (silent)
 
 console.log('[ABP] loaded', DATA.features.length, 'features; criteria=', CRITERIA);
 </script>
