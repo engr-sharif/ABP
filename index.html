@@ -17,6 +17,7 @@
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://unpkg.com/chart.js@4.4.1/dist/chart.umd.js"></script>
+<script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
 <style>
 /* ============================== LAYOUT / THEME ============================== */
@@ -25,7 +26,29 @@
   --line:#d7dbe0; --accent:#1f6feb; --accent-dk:#1450b0;
   --red:#d7191c; --green:#1a9641; --gray:#9e9e9e; --amber:#f0ad4e;
   --topbar:#1d2733;
+  --overlay:rgba(255,255,255,.96); --overlay-solid:#ffffff; --shadow:rgba(0,0,0,.18);
+  --ease:cubic-bezier(.22,.61,.36,1);
 }
+body.dark{
+  --bg:#0e1217; --panel:#161c24; --ink:#e7edf3; --muted:#93a1b0;
+  --line:#2a323d; --accent:#3b82f6; --accent-dk:#2563eb;
+  --topbar:#0a0e13;
+  --overlay:rgba(22,28,36,.94); --overlay-solid:#161c24; --shadow:rgba(0,0,0,.55);
+}
+body.dark .leaflet-popup-content-wrapper,
+body.dark .leaflet-popup-tip{ background:var(--overlay-solid); color:var(--ink); }
+body.dark .leaflet-control-zoom a{ background:var(--overlay-solid); color:var(--ink); border-color:var(--line); }
+body.dark .leaflet-bar{ border-color:var(--line); }
+body.dark .sample-label{ background:rgba(22,28,36,.85); color:#e7edf3; border-color:rgba(255,255,255,.25); }
+body.dark .leaflet-control-scale-line{ background:rgba(22,28,36,.7); color:#e7edf3; border-color:#5a6675; }
+body.dark .section > h2{ background:#11161c; }
+body.dark .section > h2:hover{ background:#1b222b; }
+body.dark .stats-table th{ background:#11161c; }
+body.dark select,body.dark input[type=text],body.dark input[type=number]{ background:#0f141a; color:var(--ink); }
+body.dark input[type=file]{ color:var(--ink); }
+body.dark .leaflet-popup-content{ color:var(--ink); }
+body.dark .leaflet-pm-toolbar .leaflet-pm-icon{ filter:invert(.9) hue-rotate(180deg); }
+body.dark.theme-anim, body.theme-anim, body.theme-anim *{ transition:background-color .35s var(--ease), color .35s var(--ease), border-color .35s var(--ease) !important; }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -46,9 +69,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 #panel{position:absolute;top:46px;left:0;bottom:0;width:330px;background:var(--panel);
   border-right:1px solid var(--line);overflow-y:auto;z-index:1100;transition:transform .2s ease;padding-bottom:40px}
 #panel.collapsed{transform:translateX(-330px)}
-#panelToggle{position:absolute;top:54px;left:330px;z-index:1101;background:var(--panel);
-  border:1px solid var(--line);border-left:none;border-radius:0 6px 6px 0;width:22px;height:46px;
-  cursor:pointer;font-size:14px;line-height:46px;text-align:center;transition:left .2s ease;color:var(--muted)}
+#panelToggle{position:absolute;top:50%;margin-top:-32px;left:330px;z-index:1101;background:var(--panel);
+  border:1px solid var(--line);border-left:none;border-radius:0 8px 8px 0;width:24px;height:64px;
+  cursor:pointer;font-size:15px;line-height:64px;text-align:center;transition:left .25s var(--ease),background .2s;color:var(--muted)}
+#panelToggle:hover{background:var(--accent);color:#fff}
 #panel.collapsed ~ #panelToggle{left:0}
 
 .section{border-bottom:1px solid var(--line)}
@@ -58,8 +82,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 .section > h2:hover{background:#f0f2f5}
 .section > h2 .chev{transition:transform .15s ease}
 .section.closed > h2 .chev{transform:rotate(-90deg)}
-.section .body{padding:10px 12px}
-.section.closed .body{display:none}
+.section .body{padding:10px 12px;max-height:3000px;overflow:hidden;
+  transition:max-height .3s var(--ease),opacity .25s var(--ease),padding .25s var(--ease)}
+.section.closed .body{max-height:0;padding-top:0;padding-bottom:0;opacity:0}
 
 label.field{display:block;margin:7px 0 3px;font-size:11px;font-weight:600;color:var(--muted)}
 select,input[type=text],input[type=number]{width:100%;padding:5px 7px;border:1px solid var(--line);
@@ -68,11 +93,17 @@ select,input[type=text],input[type=number]{width:100%;padding:5px 7px;border:1px
 .row > *{flex:1}
 .checkrow{display:flex;align-items:center;gap:7px;margin:5px 0;font-size:12px;cursor:pointer}
 .checkrow input{flex:none;width:auto}
-.btn{display:inline-block;padding:6px 10px;border:1px solid var(--line);border-radius:5px;background:#fff;
-  cursor:pointer;font-size:12px;color:var(--ink);text-align:center}
-.btn:hover{background:#f0f2f5}
+.btn{display:inline-block;padding:6px 10px;border:1px solid var(--line);border-radius:5px;background:var(--panel);
+  cursor:pointer;font-size:12px;color:var(--ink);text-align:center;
+  transition:transform .12s var(--ease),background .15s,box-shadow .15s}
+.btn:hover{background:var(--bg);transform:translateY(-1px);box-shadow:0 2px 6px var(--shadow)}
+.btn:active{transform:translateY(1px) scale(.98);box-shadow:none}
 .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
 .btn.primary:hover{background:var(--accent-dk)}
+select,input[type=text],input[type=number],input[type=range]{transition:border-color .15s,box-shadow .15s}
+select:focus,input[type=text]:focus,input[type=number]:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,130,246,.25);outline:none}
+.leaflet-marker-icon.sample-icon{transition:transform .12s var(--ease)}
+.leaflet-marker-icon.sample-icon:hover{transform:scale(1.35);z-index:10000 !important}
 .hint{font-size:11px;color:var(--muted);margin:4px 0}
 
 /* Map */
@@ -80,9 +111,9 @@ select,input[type=text],input[type=number]{width:100%;padding:5px 7px;border:1px
 .with-panel #map{left:330px}
 
 /* Legend */
-#legend{position:absolute;bottom:22px;right:12px;z-index:1000;background:rgba(255,255,255,.96);
-  border:1px solid var(--line);border-radius:7px;box-shadow:0 2px 10px rgba(0,0,0,.18);
-  padding:10px 12px;min-width:170px;max-width:240px;font-size:12px}
+#legend{position:absolute;bottom:22px;right:12px;z-index:1000;background:var(--overlay);color:var(--ink);
+  border:1px solid var(--line);border-radius:7px;box-shadow:0 2px 10px var(--shadow);backdrop-filter:blur(3px);
+  padding:10px 12px;min-width:170px;max-width:240px;font-size:12px;transition:transform .2s var(--ease),opacity .2s}
 #legend h3{margin:0 0 6px;font-size:12px;font-weight:700;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
 #legend.closed .legend-body{display:none}
 .legend-row{display:flex;align-items:center;gap:8px;margin:3px 0}
@@ -109,24 +140,31 @@ select,input[type=text],input[type=number]{width:100%;padding:5px 7px;border:1px
 .popup .exc-ns{color:var(--gray);font-weight:700}
 .popup .copybtn{margin-top:6px;font-size:11px;padding:3px 7px}
 
-/* North arrow + title block (for export) */
-#northArrow{position:absolute;top:58px;right:14px;z-index:1000;width:42px;height:52px;
-  background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:6px;text-align:center;
-  font-size:10px;font-weight:700;color:#333;padding-top:3px;box-shadow:0 1px 5px rgba(0,0,0,.15)}
-#northArrow svg{display:block;margin:1px auto 0}
-#titleBlock{position:absolute;top:58px;left:344px;z-index:1000;background:rgba(255,255,255,.95);
-  border:1px solid var(--line);border-radius:6px;padding:7px 11px;box-shadow:0 1px 6px rgba(0,0,0,.15);
-  max-width:360px;display:none}
-.with-panel #titleBlock{left:344px}
-body:not(.with-panel) #titleBlock{left:14px}
+/* North arrow (Leaflet control, stacks under zoom at top-left) */
+.na-ctrl{width:40px;height:50px;background:var(--overlay);border:1px solid var(--line);border-radius:6px;
+  text-align:center;font-size:10px;font-weight:700;color:var(--ink);padding-top:3px;box-shadow:0 1px 5px var(--shadow);
+  backdrop-filter:blur(3px);cursor:default}
+.na-ctrl svg{display:block;margin:1px auto 0}
+.na-ctrl svg polygon{fill:var(--ink)}
+
+/* Title block — draggable + editable */
+#titleBlock{position:absolute;top:64px;left:50%;transform:translateX(-50%);z-index:1000;background:var(--overlay);color:var(--ink);
+  border:1px solid var(--line);border-radius:8px;box-shadow:0 2px 12px var(--shadow);backdrop-filter:blur(3px);
+  max-width:420px;min-width:220px;display:none;overflow:hidden}
 #titleBlock.show{display:block}
+#titleBlock.placed{transform:none}
+#titleBlock .tb-handle{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:3px 8px;background:rgba(127,127,127,.12);cursor:grab;font-size:10px;color:var(--muted);user-select:none}
+#titleBlock .tb-handle:active{cursor:grabbing}
+#titleBlock .tb-handle .tb-auto{cursor:pointer;border:1px solid var(--line);border-radius:4px;padding:0 6px;background:var(--panel)}
+#titleBlock .tb-body{padding:7px 11px}
 #titleBlock .tb-title{font-size:14px;font-weight:700;outline:none}
-#titleBlock .tb-sub{font-size:11px;color:var(--muted);outline:none}
+#titleBlock .tb-sub{font-size:11px;color:var(--muted);outline:none;margin-top:2px}
 
 /* cursor coords */
-#coords{position:absolute;bottom:0;left:340px;z-index:1000;background:rgba(255,255,255,.9);
+#coords{position:absolute;bottom:0;left:340px;z-index:1000;background:var(--overlay);
   border:1px solid var(--line);border-bottom:none;border-left:none;border-radius:0 6px 0 0;
-  padding:2px 8px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  padding:2px 8px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;transition:left .25s var(--ease)}
 body:not(.with-panel) #coords{left:0}
 
 .stats-table{width:100%;border-collapse:collapse;font-size:11px;font-variant-numeric:tabular-nums}
@@ -155,7 +193,7 @@ body:not(.with-panel) #coords{left:0}
   .leaflet-control-zoom,.leaflet-pm-toolbar,.leaflet-control-attribution,
   .leaflet-sbs-range{ display:none !important; }
   #map{ top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; }
-  #legend,#northArrow,#titleBlock{ box-shadow:none !important; }
+  #legend,.na-ctrl,#titleBlock{ box-shadow:none !important; }
   body{ overflow:visible !important; }
   @page{ size:landscape; margin:8mm; }
 }
@@ -170,6 +208,9 @@ body:not(.with-panel) #coords{left:0}
   <div class="spacer"></div>
   <label style="font-size:11px;color:#9fb3c8">Base:
     <select id="baseSelect">
+      <option value="gsat">Google Satellite</option>
+      <option value="ghyb">Google Hybrid (labels)</option>
+      <option value="groad">Google Roads</option>
       <option value="imagery">Esri Satellite</option>
       <option value="topo">Esri Topo</option>
       <option value="osm">OpenStreetMap</option>
@@ -177,6 +218,8 @@ body:not(.with-panel) #coords{left:0}
     </select>
   </label>
   <span id="unvalidated" title="">UNVALIDATED DATA</span>
+  <button id="themeToggle" title="Toggle dark / light mode"
+    style="background:#2b3a4d;color:#fff;border:1px solid #3a4a5c;border-radius:4px;padding:4px 9px;cursor:pointer;font-size:13px">☾</button>
 </div>
 
 <!-- ============================== LEFT PANEL ============================== -->
@@ -389,10 +432,36 @@ body:not(.with-panel) #coords{left:0}
     <h2>Export &amp; Session <span class="chev">▾</span></h2>
     <div class="body">
       <label class="checkrow"><input type="checkbox" id="showTitleBlock"> Show title block (for figures)</label>
-      <button class="btn primary" id="exportPng" style="width:100%;margin:4px 0">Export map as PNG figure</button>
+      <label class="field">Figure file name</label>
+      <input type="text" id="expName" value="ABP_figure" placeholder="file name (no extension)">
+      <div class="row" style="margin-top:6px">
+        <span><label class="field" style="margin-top:0">Format</label>
+          <select id="expFormat"><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="pdf">PDF</option></select></span>
+        <span><label class="field" style="margin-top:0">Resolution</label>
+          <select id="expScale"><option value="1">1× screen</option><option value="2" selected>2× (print)</option><option value="3">3×</option><option value="4">4× (poster)</option></select></span>
+      </div>
+      <label class="field">Include in figure</label>
+      <div class="row" style="flex-wrap:wrap;gap:4px 12px">
+        <label class="checkrow" style="margin:0"><input type="checkbox" class="expInc" value="legend" checked> Legend</label>
+        <label class="checkrow" style="margin:0"><input type="checkbox" class="expInc" value="northArrow" checked> North arrow</label>
+        <label class="checkrow" style="margin:0"><input type="checkbox" class="expInc" value="titleBlock" checked> Title</label>
+        <label class="checkrow" style="margin:0"><input type="checkbox" class="expInc" value="scale" checked> Scale bar</label>
+      </div>
+      <button class="btn primary" id="exportPng" style="width:100%;margin:6px 0 4px">⤓ Export figure</button>
+      <div class="row">
+        <button class="btn" id="copyPng">Copy to clipboard</button>
+        <button class="btn" id="printBtn2">Print…</button>
+      </div>
+      <label class="field" style="margin-top:4px">Print orientation</label>
+      <select id="printOrient"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select>
+      <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
       <div class="row">
         <button class="btn" id="exportShapes">Shapes → GeoJSON</button>
         <button class="btn" id="exportCsv">Points → CSV</button>
+      </div>
+      <div class="row" style="margin-top:4px">
+        <button class="btn" id="exportGeojson">Data → GeoJSON</button>
+        <button class="btn" id="exportStats">Stats → CSV</button>
       </div>
       <label class="field" style="margin-top:8px">Import GeoJSON (data or shapes)</label>
       <input type="file" id="importFile" accept=".geojson,.json">
@@ -412,14 +481,12 @@ body:not(.with-panel) #coords{left:0}
 <!-- ============================== MAP & OVERLAYS ============================== -->
 <div id="map"></div>
 
-<div id="northArrow">
-  <svg width="20" height="34" viewBox="0 0 20 34"><polygon points="10,0 17,20 10,15 3,20" fill="#1d2733"/></svg>
-  N
-</div>
-
 <div id="titleBlock">
-  <div class="tb-title" contenteditable="true">Figure X — ABP Surface Soil Sample Locations</div>
-  <div class="tb-sub" contenteditable="true">Sulphur Bank Mercury Mine · Area Between Piles · Rounds 1 &amp; 2 + EA Historical</div>
+  <div class="tb-handle"><span>⠿ drag</span><span class="tb-auto" title="Auto-fill subtitle from current view">↻ auto</span></div>
+  <div class="tb-body">
+    <div class="tb-title" contenteditable="true">Figure X — ABP Surface Soil Sample Locations</div>
+    <div class="tb-sub" contenteditable="true">Sulphur Bank Mercury Mine · Area Between Piles · Rounds 1 &amp; 2 + EA Historical</div>
+  </div>
 </div>
 
 <div id="swipeDivider"><div class="grip">⇔</div><div class="tagL">ROD</div><div class="tagR">PMB</div></div>
@@ -482,18 +549,31 @@ function hasDeep(p){ return typeof p.depth === 'string' && p.depth.indexOf('Deep
 /* =========================================================================
    SECTION 2 — MAP & BASE LAYERS
    ========================================================================= */
-const map = L.map('map', { zoomControl:true, maxZoom:22, preferCanvas:false });
+const map = L.map('map', {
+  zoomControl:true, minZoom:11, maxZoom:21, preferCanvas:false,
+  zoomSnap:0.25, zoomDelta:0.5,                 // finer, less jumpy zoom steps
+  wheelDebounceTime:30, wheelPxPerZoomLevel:120,// smoother, more linear wheel zoom
+  zoomAnimation:true, fadeAnimation:true, markerZoomAnimation:true,
+  inertia:true, inertiaDeceleration:2400, inertiaMaxSpeed:1800, easeLinearity:0.22,
+  bounceAtZoomLimits:true
+});
 
 const bases = {
   imagery: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            { maxZoom:22, maxNativeZoom:19, crossOrigin:'anonymous', attribution:'Imagery © Esri, Maxar, Earthstar Geographics' }),
+            { maxZoom:21, maxNativeZoom:19, crossOrigin:'anonymous', attribution:'Imagery © Esri, Maxar, Earthstar Geographics' }),
+  gsat:    L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+            { maxZoom:21, maxNativeZoom:20, subdomains:['mt0','mt1','mt2','mt3'], crossOrigin:'anonymous', attribution:'Imagery © Google' }),
+  ghyb:    L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+            { maxZoom:21, maxNativeZoom:20, subdomains:['mt0','mt1','mt2','mt3'], crossOrigin:'anonymous', attribution:'Imagery © Google' }),
+  groad:   L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+            { maxZoom:21, maxNativeZoom:20, subdomains:['mt0','mt1','mt2','mt3'], crossOrigin:'anonymous', attribution:'Map data © Google' }),
   topo:    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-            { maxZoom:22, maxNativeZoom:19, crossOrigin:'anonymous', attribution:'© Esri' }),
+            { maxZoom:21, maxNativeZoom:19, crossOrigin:'anonymous', attribution:'© Esri' }),
   osm:     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
             { maxZoom:19, crossOrigin:'anonymous', attribution:'© OpenStreetMap contributors' }),
-  blank:   L.tileLayer('', { maxZoom:22 })
+  blank:   L.tileLayer('', { maxZoom:21 })
 };
-let currentBase = bases.imagery.addTo(map);
+let currentBase = bases.gsat.addTo(map);
 document.getElementById('baseSelect').addEventListener('change', e=>{
   map.removeLayer(currentBase);
   currentBase = bases[e.target.value];
@@ -504,6 +584,17 @@ document.getElementById('baseSelect').addEventListener('change', e=>{
 });
 
 L.control.scale({ imperial:true, metric:true, position:'bottomleft' }).addTo(map);
+
+// North arrow as a Leaflet control (top-left, stacks beneath the zoom buttons)
+const NorthArrow = L.Control.extend({
+  onAdd:function(){
+    const d = L.DomUtil.create('div','na-ctrl leaflet-control');
+    d.id = 'northArrow';
+    d.innerHTML = '<svg width="20" height="34" viewBox="0 0 20 34"><polygon points="10,0 17,20 10,15 3,20"/></svg>N';
+    return d;
+  }
+});
+new NorthArrow({ position:'topleft' }).addTo(map);
 
 // cursor coordinate readout
 map.on('mousemove', e=>{
@@ -1127,18 +1218,75 @@ function download(name, content, mime){
   const a = document.createElement('a'); a.href=u; a.download=name; a.click();
   setTimeout(()=>URL.revokeObjectURL(u), 1000);
 }
-function exportPng(){
-  const el = $('map'); const r = el.getBoundingClientRect();
-  const msg = $('sessionMsg'); msg.textContent='Rendering figure…';
-  html2canvas(document.body, {
-    useCORS:true, allowTaint:false, backgroundColor:'#ffffff', scale:2, logging:false,
-    x:r.left, y:r.top, width:r.width, height:r.height,
-    scrollX:0, scrollY:0,
+function expFileName(def){ return ($('expName').value||def).trim().replace(/[^\w.-]+/g,'_'); }
+function exportIgnore(n){
+  if(['panel','panelToggle','topbar','coords','swipeDivider'].includes(n.id)) return true;
+  const cl = n.classList;
+  if(cl && (cl.contains('leaflet-control-zoom')||cl.contains('leaflet-pm-toolbar')||cl.contains('leaflet-pm-toolbar-vertical'))) return true;
+  const inc = [...document.querySelectorAll('.expInc:checked')].map(c=>c.value);
+  if(!inc.includes('legend')     && n.id==='legend') return true;
+  if(!inc.includes('northArrow') && n.id==='northArrow') return true;
+  if(!inc.includes('titleBlock') && n.id==='titleBlock') return true;
+  if(!inc.includes('scale') && cl && cl.contains('leaflet-control-scale')) return true;
+  return false;
+}
+function renderFigureCanvas(){
+  const el=$('map'); const r=el.getBoundingClientRect();
+  const scale=Math.max(1,Math.min(4,+($('expScale').value||2)));
+  return html2canvas(document.body, {
+    useCORS:true, allowTaint:false,
+    backgroundColor: document.body.classList.contains('dark') ? '#0e1217' : '#ffffff',
+    scale, logging:false, x:r.left, y:r.top, width:r.width, height:r.height, scrollX:0, scrollY:0,
     windowWidth:document.documentElement.clientWidth, windowHeight:document.documentElement.clientHeight,
-    ignoreElements: n => ['panel','panelToggle','topbar','coords'].includes(n.id)
-  }).then(canvas=>{
-    canvas.toBlob(b=>{ download('abp_figure.png', b, 'image/png'); msg.textContent='Figure exported.'; });
-  }).catch(err=>{ msg.textContent='PNG export failed (tile CORS?): '+err.message; });
+    ignoreElements: exportIgnore
+  });
+}
+function exportPng(){
+  const msg=$('sessionMsg'), fmt=$('expFormat').value, name=expFileName('ABP_figure');
+  msg.textContent='Rendering figure…';
+  renderFigureCanvas().then(canvas=>{
+    if(fmt==='pdf'){
+      const J = window.jspdf && window.jspdf.jsPDF;
+      if(!J){ msg.textContent='PDF library unavailable (offline?). Use PNG/JPEG.'; return; }
+      const img=canvas.toDataURL('image/jpeg',0.92);
+      const pdf=new J({ orientation:$('printOrient').value==='portrait'?'p':'l', unit:'pt', format:'a4', compress:true });
+      const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), ar=canvas.width/canvas.height;
+      let w=pw-24, h=w/ar; if(h>ph-24){ h=ph-24; w=h*ar; }
+      pdf.addImage(img,'JPEG',(pw-w)/2,(ph-h)/2,w,h);
+      pdf.save(name+'.pdf'); msg.textContent='PDF exported.'; return;
+    }
+    const mime = fmt==='jpeg' ? 'image/jpeg' : 'image/png';
+    canvas.toBlob(b=>{ download(name+'.'+fmt, b, mime); msg.textContent='Figure exported ('+canvas.width+'×'+canvas.height+').'; }, mime, 0.95);
+  }).catch(err=>{ msg.textContent='Export failed (tile CORS?): '+err.message; });
+}
+function copyFigure(){
+  const msg=$('sessionMsg'); msg.textContent='Rendering…';
+  renderFigureCanvas().then(canvas=>{
+    canvas.toBlob(async b=>{
+      try{ await navigator.clipboard.write([new ClipboardItem({'image/png':b})]); msg.textContent='Figure copied to clipboard.'; }
+      catch(e){ msg.textContent='Clipboard blocked by browser; use Export instead.'; }
+    },'image/png');
+  }).catch(err=>{ msg.textContent='Copy failed: '+err.message; });
+}
+function doPrint(){
+  let s=$('printOrientStyle');
+  if(!s){ s=document.createElement('style'); s.id='printOrientStyle'; document.head.appendChild(s); }
+  s.textContent='@media print{@page{size:'+$('printOrient').value+';margin:8mm}}';
+  window.print();
+}
+function exportDataGeojson(){
+  const fc={ type:'FeatureCollection', metadata:DATA.metadata, features:filteredFeatures() };
+  if(!fc.features.length){ $('sessionMsg').textContent='No points in current filter.'; return; }
+  download(expFileName('ABP_data')+'.geojson', JSON.stringify(fc), 'application/geo+json');
+  $('sessionMsg').textContent=fc.features.length+' points exported.';
+}
+function exportStats(){
+  const st=computeStats(filteredFeatures());
+  const rows=[['metric','value'],['showing',st.n],['sampled',st.nSampled],['ROD_exceedances',st.rod],['PMB_exceedances',st.pmb]];
+  ANALYTES.forEach(an=>{ const a=st.perA[an]; if(a){
+    rows.push([an+'_min',a.min],[an+'_mean',a.mean.toFixed(2)],[an+'_median',a.median],[an+'_max',a.max],[an+'_pct_over_'+STATE.criterion,a.pctExc.toFixed(1)]);
+  }});
+  download(expFileName('ABP_stats')+'.csv', rows.map(r=>r.join(',')).join('\n'), 'text/csv');
 }
 function exportShapes(){
   const fc = shapesToGeoJSON();
@@ -1191,6 +1339,8 @@ function sessionData(){
     titleMain:document.querySelector('.tb-title').innerText,
     titleSub:document.querySelector('.tb-sub').innerText,
     showTitleBlock:$('showTitleBlock').checked,
+    dark:document.body.classList.contains('dark'),
+    titlePos:(function(){ const tb=$('titleBlock'); return tb.classList.contains('placed')?{left:tb.style.left,top:tb.style.top}:null; })(),
     shapes:shapesToGeoJSON()
   };
 }
@@ -1228,6 +1378,8 @@ function loadSession(silent){
   if(d.titleMain) document.querySelector('.tb-title').innerText=d.titleMain;
   if(d.titleSub) document.querySelector('.tb-sub').innerText=d.titleSub;
   if(d.showTitleBlock){ $('showTitleBlock').checked=true; $('titleBlock').classList.add('show'); }
+  if(d.titlePos && d.titlePos.left){ const tb=$('titleBlock'); tb.classList.add('placed'); tb.style.left=d.titlePos.left; tb.style.top=d.titlePos.top; tb.style.right='auto'; }
+  applyTheme(!!d.dark);
   drawnItems.clearLayers(); loadShapesGeoJSON(d.shapes);
   syncControlVisibility(); applyDisplay(); applyFilters(); updateGrid();
   if(!silent) $('sessionMsg').textContent='Session loaded.';
@@ -1274,12 +1426,57 @@ function doSearch(){
 }
 // export/import
 $('exportPng').addEventListener('click', exportPng);
+$('copyPng').addEventListener('click', copyFigure);
+$('printBtn2').addEventListener('click', doPrint);
 $('exportShapes').addEventListener('click', exportShapes);
 $('exportCsv').addEventListener('click', exportCsv);
+$('exportGeojson').addEventListener('click', exportDataGeojson);
+$('exportStats').addEventListener('click', exportStats);
 $('importFile').addEventListener('change', e=>{ if(e.target.files[0]) handleImport(e.target.files[0]); e.target.value=''; });
-// title block
+// title block — show, edit, drag, auto-fill
 $('showTitleBlock').addEventListener('change', e=>{ $('titleBlock').classList.toggle('show', e.target.checked); scheduleAutosave(); });
 document.querySelectorAll('.tb-title,.tb-sub').forEach(el=>el.addEventListener('input', scheduleAutosave));
+(function makeTitleDraggable(){
+  const tb=$('titleBlock'), handle=tb.querySelector('.tb-handle'); let drag=null;
+  handle.addEventListener('pointerdown', e=>{
+    if(e.target.classList.contains('tb-auto')) return;
+    const rect=tb.getBoundingClientRect();
+    drag={dx:e.clientX-rect.left, dy:e.clientY-rect.top};
+    tb.classList.add('placed'); handle.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  handle.addEventListener('pointermove', e=>{
+    if(!drag) return;
+    const m=$('map').getBoundingClientRect();
+    let x=e.clientX-drag.dx, y=e.clientY-drag.dy;
+    x=Math.max(m.left+2, Math.min(x, m.right-tb.offsetWidth-2));
+    y=Math.max(m.top+2,  Math.min(y, m.bottom-tb.offsetHeight-2));
+    tb.style.left=x+'px'; tb.style.top=y+'px'; tb.style.right='auto';
+  });
+  handle.addEventListener('pointerup', ()=>{ if(drag){ drag=null; scheduleAutosave(); } });
+  tb.querySelector('.tb-auto').addEventListener('click', autoTitle);
+})();
+function autoTitle(){
+  const an=ANALYTE_LABEL[STATE.analyte]||STATE.analyte;
+  const modeTxt={rod:'ROD exceedance',pmb:'PMB exceedance',conc:an+' concentration',
+    ratio:an+' ratio to '+STATE.criterion,round:'sampling dataset',driver:'driving COC'}[STATE.colorBy]||STATE.colorBy;
+  const ds=STATE.filters.datasets||[];
+  const dsTxt = ds.length>=3 ? 'Rounds 1 & 2 + EA Historical'
+    : ds.map(d=>({'1':'Round 1','2':'Round 2','EA':'EA Historical'}[d])).join(' + ') || 'no datasets';
+  document.querySelector('.tb-sub').innerText='SBMM ABP · '+dsTxt+' · coloured by '+modeTxt;
+  scheduleAutosave();
+}
+// dark / light theme
+function applyTheme(dark){
+  document.body.classList.toggle('dark', dark);
+  $('themeToggle').textContent = dark ? '☀' : '☾';
+  if(currentBase===bases.blank) $('map').style.background = dark ? '#0e1217' : '#fff';
+}
+$('themeToggle').addEventListener('click', ()=>{
+  document.body.classList.add('theme-anim');
+  applyTheme(!document.body.classList.contains('dark'));
+  scheduleAutosave();
+  setTimeout(()=>document.body.classList.remove('theme-anim'), 420);
+});
 // session
 $('saveSession').addEventListener('click', saveSession);
 $('loadSession').addEventListener('click', ()=>loadSession(false));
