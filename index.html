@@ -142,6 +142,10 @@ select:focus,input[type=text]:focus,input[type=number]:focus{border-color:var(--
 
 /* Boring-log popup */
 .popup-bl .bl-tag{font-weight:400;color:var(--muted);font-size:11px}
+.popup-bl .hi-badge{font-weight:700;font-size:11px;color:#1f2933;padding:1px 7px;border-radius:10px;border:1px solid rgba(0,0,0,.25);margin-left:4px}
+body.dark .popup-bl .hi-badge{color:#0e1217}
+.popup-bl .bl-chart-wrap{margin-top:8px;border-top:1px solid var(--line);padding-top:6px}
+.popup-bl .bl-depth-chart{width:100% !important;max-width:380px;height:150px !important;display:block}
 .popup-bl .bl-meta{font-size:10.5px;color:var(--muted);margin:2px 0 6px}
 .popup-bl .bl-notes{font-size:11px;color:var(--muted);margin-top:6px;border-top:1px solid var(--line);padding-top:4px}
 .popup-bl .bl-wrap{display:flex;gap:10px;align-items:flex-start;margin-top:4px}
@@ -240,6 +244,8 @@ body:not(.with-panel) #coords{left:0}
       <label class="field">Color points by</label>
       <select id="colorBy">
         <option value="rod">ROD exceedance</option>
+        <option value="hi">Hazard Index (combined)</option>
+        <option value="doc">Depth of contamination</option>
         <option value="conc">Analyte concentration</option>
         <option value="ratio">Ratio to ROD (×)</option>
         <option value="round">Round</option>
@@ -282,6 +288,16 @@ body:not(.with-panel) #coords{left:0}
         <input type="range" id="heatOp" min="0.1" max="1" step="0.05" value="0.8">
         <label class="checkrow"><input type="checkbox" id="heatLog" checked> Log scale (Hg)</label>
         <p class="hint" style="margin:4px 0 0">Smooth kernel-density heat of <b>samples that exceed ROD</b> only — below-threshold points contribute nothing, so clean zones stay transparent. Warmer = larger exceedance / denser hot spots.</p>
+      </div>
+      <label class="checkrow"><input type="checkbox" id="toggleHI"> Hazard Index surface (combined risk)</label>
+      <div id="hiCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
+        <label class="field">Grid resolution <span id="hiResV">100</span> px</label>
+        <input type="range" id="hiRes" min="40" max="160" step="10" value="100">
+        <label class="field">IDW power <span id="hiPowV">2</span></label>
+        <input type="range" id="hiPow" min="1" max="4" step="0.5" value="2">
+        <label class="field">Opacity <span id="hiOpV">0.6</span></label>
+        <input type="range" id="hiOp" min="0.1" max="1" step="0.05" value="0.6">
+        <p class="hint" style="margin:4px 0 0">HI = Hg/204 + As/6.1 + Sb/51 + Tl/1.3. HI ≥ 1 means combined ROD exceedance (EPA RAGS). Categorically coloured by RAGS bins, clipped to the convex hull of sampled points.</p>
       </div>
       <label class="checkrow"><input type="checkbox" id="toggleIDW"> IDW surface (clipped to hull)</label>
       <div id="idwCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
@@ -667,6 +683,82 @@ function driverColor(p){
   return '#2c7bb6';                                         // Sb/Tl only -> blue
 }
 
+// ---- Hazard Index (HI) — EPA RAGS additive risk metric -----------------
+// HI = sum(C_i / ROD_i) over the four analytes. HI >= 1 means combined
+// exceedance even when no single analyte exceeds its own ROD ("death by
+// addition"). Bands per EPA Risk Assessment Guidance for Superfund (RAGS).
+function hiOfValues(vals){
+  if(!vals) return null;
+  let hi=0, any=false;
+  ANALYTES.forEach(a=>{
+    const v = vals[a], thr = CRITERIA.ROD[a];
+    if(isNum(v) && isNum(thr) && thr>0){ hi += v/thr; any = true; }
+  });
+  return any ? hi : null;
+}
+function hazardIndex(p){
+  if(!p.sampled) return null;
+  return hiOfValues({Hg:p.Hg, As:p.As, Sb:p.Sb, Tl:p.Tl});
+}
+function hiBand(hi){
+  if(!isNum(hi))     return 'ns';
+  if(hi <  1)        return 'safe';      // OK — below combined exceedance
+  if(hi <  3)        return 'elevated';  // RAGS-style elevated
+  if(hi < 10)        return 'high';      // high
+  return 'severe';                       // severe hot spot
+}
+const HI_COLOR = { safe:'#1a9641', elevated:'#fee08b', high:'#fdae61', severe:'#d73027', ns:'#9e9e9e' };
+const HI_LABEL = { safe:'HI < 1 (acceptable)', elevated:'1 ≤ HI < 3 (elevated)', high:'3 ≤ HI < 10 (high)', severe:'HI ≥ 10 (severe)' };
+function hiContributions(p){
+  const hi = hazardIndex(p); if(!isNum(hi) || hi<=0) return [];
+  return ANALYTES.map(a=>{
+    const v = num(p[a]), thr = CRITERIA.ROD[a];
+    const r = (isNum(v) && isNum(thr) && thr>0) ? v/thr : 0;
+    return { a, ratio:r, pct: r/hi*100 };
+  }).filter(x=>x.pct>0).sort((a,b)=>b.pct-a.pct);
+}
+
+// ---- Depth of Contamination (DOC) — deepest interval exceeding ROD ------
+// Categorises each sample by where (vertically) ROD is exceeded for a given
+// analyte ('HI' uses combined HI >= 1). 'bottomedOut' = exceedance present in
+// the deepest available interval, i.e. the plume may continue deeper.
+function exceedsAtLayer(layer, analyte){
+  if(!layer.values) return false;
+  if(analyte==='HI'){ const hi = hiOfValues(layer.values); return isNum(hi) && hi >= 1; }
+  const v = layer.values[analyte], thr = CRITERIA.ROD[analyte];
+  return isNum(v) && isNum(thr) && v > thr;
+}
+function deepestExceedance(p, analyte){
+  if(!p.sampled) return { band:'ns', bottomedOut:false, deepestBot:null };
+  const soils = sampleLayers(p).filter(l=>l.kind==='soil' && l.values && ANALYTES.some(a=>isNum(l.values[a])));
+  if(!soils.length) return { band:'ns', bottomedOut:false, deepestBot:null };
+  const exc = soils.filter(l=>exceedsAtLayer(l, analyte));
+  if(!exc.length) return { band:'clean', bottomedOut:false, deepestBot:0 };
+  const deepestExc    = exc.reduce((a,b)=> (b.bot||0) > (a.bot||0) ? b : a);
+  const deepestSample = soils.reduce((a,b)=> (b.bot||0) > (a.bot||0) ? b : a);
+  const bottomedOut   = (deepestExc === deepestSample);
+  const d = deepestExc.bot || 0;
+  let band='surface';
+  if(d <= 0.5) band='surface';
+  else if(d <= 1) band='shallow';
+  else if(d <= 2) band='mid';
+  else if(d <= 3) band='deep';
+  else band='verydeep';
+  return { band, bottomedOut, deepestBot:d };
+}
+const DOC_COLOR = {
+  clean:'#1a9641', surface:'#fee08b', shallow:'#fdae61', mid:'#f46d43',
+  deep:'#d73027', verydeep:'#7f0000', ns:'#9e9e9e'
+};
+const DOC_LABEL = {
+  clean:'No exceedance at any depth', surface:'Surface only (≤ 0.5 ft)',
+  shallow:'Shallow (≤ 1 ft)', mid:'Mid (1–2 ft)', deep:'Deep (2–3 ft)',
+  verydeep:'Very deep (3–4 ft)'
+};
+
+// per-analyte plot colors for the depth chart
+const ANALYTE_COLOR = { Hg:'#d7191c', As:'#fdae61', Sb:'#2c7bb6', Tl:'#7b3294' };
+
 // MASTER: fill color for a feature under the active color-by mode
 function fillFor(p, mode){
   if(!p.sampled) return null;                  // hollow handled by renderer
@@ -683,6 +775,12 @@ function fillFor(p, mode){
       if(r===null) return '#cccccc';
       // 0..2x mapped onto ramp, clamp; 1x sits mid-ramp
       return rampColor(Math.max(0,Math.min(1, r/2)));
+    }
+    case 'hi': {
+      return HI_COLOR[hiBand(hazardIndex(p))];
+    }
+    case 'doc': {
+      return DOC_COLOR[deepestExceedance(p, STATE.analyte).band];
     }
   }
   return SEM.ns;
@@ -710,7 +808,16 @@ function svgMarker(p, mode){
   else                   body = `<polygon points="${c},${c-r-1} ${c+r+1},${c+r} ${c-r-1},${c+r}" fill="${fillCol}" fill-opacity="${fillOp}" stroke="${stroke}" stroke-width="1.6" ${dash}/>`;
   // deep-sample accent: small inner ring
   const accent = hasDeep(p) ? `<circle cx="${c}" cy="${c}" r="2.4" fill="#111" stroke="#fff" stroke-width="0.8"/>` : '';
-  const html = `<svg width="${S}" height="${S}" viewBox="0 0 ${S} ${S}" style="overflow:visible">${body}${accent}</svg>`;
+  // DOC mode: small downward chevron under the marker if the deepest available
+  // interval still exceeds ROD ("bottomed out" — plume may continue deeper).
+  let bottomChevron = '';
+  if((mode || STATE.colorBy)==='doc' && p.sampled){
+    const info = deepestExceedance(p, STATE.analyte);
+    if(info.bottomedOut){
+      bottomChevron = `<polygon points="${c-4},${c+r+2} ${c+4},${c+r+2} ${c},${c+r+8}" fill="#7f0000" stroke="#fff" stroke-width="0.6"/>`;
+    }
+  }
+  const html = `<svg width="${S}" height="${S}" viewBox="0 0 ${S} ${S}" style="overflow:visible">${body}${accent}${bottomChevron}</svg>`;
   return L.divIcon({ className:'sample-icon', html, iconSize:[S,S], iconAnchor:[c,c] });
 }
 
@@ -802,6 +909,17 @@ function popupHtml(p){
   const overall = p.rod_exceed==='YES' ? `<span class="exc-yes">⚠ Exceeds ROD</span>`
                  : p.rod_exceed==='NO' ? `<span class="exc-no">Below ROD</span>`
                  : `<span class="exc-ns">${p.rod_exceed||'Not sampled'}</span>`;
+  // Hazard Index summary (combined ROD-ratio across the 4 analytes)
+  const hi = hazardIndex(p);
+  const hiBadge = isNum(hi) ? (() => {
+    const band = hiBand(hi);
+    const driverTxt = hiContributions(p).slice(0,2).map(c=>`${c.a} ${c.pct.toFixed(0)}%`).join(', ');
+    return `<span class="hi-badge" style="background:${HI_COLOR[band]}">HI ${hi.toFixed(2)}</span>`
+         + (driverTxt?` <span class="bl-tag">${driverTxt}</span>`:'');
+  })() : '';
+  // soil layers with at least 2 numeric depth points -> include depth chart
+  const soilLayers = layers.filter(l=>l.kind==='soil' && l.values && ANALYTES.some(a=>isNum(l.values[a])));
+  const showChart = soilLayers.length >= 2;
   let body;
   if(layers.length){
     const rows = layers.map(l=>{
@@ -844,14 +962,83 @@ function popupHtml(p){
     p.field_note?`Field note: ${p.field_note}`:'',
     p.notes?`Notes: ${p.notes}`:''
   ].filter(Boolean).join('\n');
+  const chartBlock = showChart
+    ? `<div class="bl-chart-wrap"><canvas class="bl-depth-chart" data-id="${p.id}" width="380" height="150"></canvas></div>`
+    : '';
   return `<div class="popup popup-bl">
-    <h4>${p.id} <span class="bl-tag">· ${datasetLabel(p)}</span> ${overall}</h4>
+    <h4>${p.id} <span class="bl-tag">· ${datasetLabel(p)}</span> ${overall} ${hiBadge}</h4>
     ${meta?`<div class="bl-meta">${meta}</div>`:''}
     ${body}
+    ${chartBlock}
     ${notes?`<div class="bl-notes">${notes}</div>`:''}
     <button class="btn copybtn" onclick='navigator.clipboard&&navigator.clipboard.writeText(${JSON.stringify(txt)})'>Copy details</button>
   </div>`;
 }
+
+// Render a Chart.js depth-vs-concentration chart into a popup's canvas, lazily on popupopen.
+function renderDepthChart(canvas){
+  const id = canvas.getAttribute('data-id');
+  const feat = DATA.features.find(f=>f.properties.id===id);
+  if(!feat) return;
+  const layers = sampleLayers(feat.properties).filter(l=>l.kind==='soil');
+  if(layers.length < 2) return;
+  // each analyte gets a depth-vs-value series (one point per layer's mid-depth);
+  // value uses a log scale so the 0.1–3000 mg/kg range stays readable.
+  const datasets = ANALYTES.map(a=>{
+    const points = layers.map(l=>{
+      const v = l.values && l.values[a];
+      if(!isNum(v) || v<=0) return null;
+      const mid = (((l.top||0) + (l.bot||0.5))/2);
+      return { x:v, y:mid, _layer:l.label };
+    }).filter(Boolean);
+    if(!points.length) return null;
+    return {
+      label:a, data:points, borderColor:ANALYTE_COLOR[a]||'#444',
+      backgroundColor:ANALYTE_COLOR[a]||'#444', pointRadius:3, pointHoverRadius:5,
+      borderWidth:1.8, showLine:true, tension:0, fill:false
+    };
+  }).filter(Boolean);
+  // ROD reference points per analyte rendered as dashed vertical lines (two points per analyte at min & max depth)
+  const yMax = Math.max(...layers.map(l=>l.bot||0.5), 0.5);
+  ANALYTES.forEach(a=>{
+    const thr = CRITERIA.ROD[a];
+    if(!isNum(thr) || thr<=0) return;
+    datasets.push({
+      label:`ROD ${a} = ${thr}`, data:[{x:thr,y:0},{x:thr,y:yMax}],
+      borderColor:ANALYTE_COLOR[a]||'#444', borderWidth:1, borderDash:[3,3],
+      pointRadius:0, showLine:true, tension:0, fill:false
+    });
+  });
+  if(canvas._chart) canvas._chart.destroy();
+  canvas._chart = new Chart(canvas, {
+    type:'scatter', data:{datasets},
+    options:{
+      animation:false, responsive:false, maintainAspectRatio:false,
+      scales:{
+        x:{ type:'logarithmic', title:{display:true, text:'Concentration (mg/kg)', font:{size:10}},
+            ticks:{font:{size:9}} },
+        y:{ reverse:true, min:0, max:yMax, title:{display:true, text:'Depth (ft)', font:{size:10}},
+            ticks:{font:{size:9}} }
+      },
+      plugins:{
+        legend:{position:'right', labels:{boxWidth:8, padding:4, font:{size:9}, filter:item=>!String(item.text).startsWith('ROD ')}},
+        tooltip:{callbacks:{label:c=>{
+          const lay=c.raw && c.raw._layer ? ' @ '+c.raw._layer : '';
+          return c.dataset.label+': '+c.raw.x+' mg/kg'+lay;
+        }}}
+      }
+    }
+  });
+}
+// Wire chart rendering + cleanup to popup open/close
+map.on('popupopen', e=>{
+  const c = e.popup._container && e.popup._container.querySelector('.bl-depth-chart');
+  if(c) renderDepthChart(c);
+});
+map.on('popupclose', e=>{
+  const c = e.popup._container && e.popup._container.querySelector('.bl-depth-chart');
+  if(c && c._chart){ c._chart.destroy(); c._chart=null; }
+});
 
 // ---- filter predicate (SECTION 8 uses STATE.filters) --------------------
 function passesFilter(p){
@@ -919,6 +1106,22 @@ function buildLegend(){
       <div class="legend-row">${swatch(SEM.yes)} Exceeds ROD</div>
       <div class="legend-row">${swatch(SEM.no)} Below ROD</div>
       <div class="legend-row">${swatch(SEM.ns)} Not sampled</div>`;
+  } else if(STATE.colorBy==='hi'){
+    html = `<div style="font-weight:600;margin-bottom:4px">Hazard Index (HI) — combined ROD ratio</div>
+      <div class="legend-row">${swatch(HI_COLOR.safe)} ${HI_LABEL.safe}</div>
+      <div class="legend-row">${swatch(HI_COLOR.elevated)} ${HI_LABEL.elevated}</div>
+      <div class="legend-row">${swatch(HI_COLOR.high)} ${HI_LABEL.high}</div>
+      <div class="legend-row">${swatch(HI_COLOR.severe)} ${HI_LABEL.severe}</div>
+      <div class="legend-row">${swatch(HI_COLOR.ns)} Not sampled</div>`;
+  } else if(STATE.colorBy==='doc'){
+    html = `<div style="font-weight:600;margin-bottom:4px">Depth of contamination — ${an} vs ROD</div>
+      <div class="legend-row">${swatch(DOC_COLOR.clean)} ${DOC_LABEL.clean}</div>
+      <div class="legend-row">${swatch(DOC_COLOR.surface)} ${DOC_LABEL.surface}</div>
+      <div class="legend-row">${swatch(DOC_COLOR.shallow)} ${DOC_LABEL.shallow}</div>
+      <div class="legend-row">${swatch(DOC_COLOR.mid)} ${DOC_LABEL.mid}</div>
+      <div class="legend-row">${swatch(DOC_COLOR.deep)} ${DOC_LABEL.deep}</div>
+      <div class="legend-row">${swatch(DOC_COLOR.verydeep)} ${DOC_LABEL.verydeep}</div>
+      <div class="legend-note" style="margin-top:4px">▼ chevron under marker = bottomed-out (plume may continue deeper)</div>`;
   } else if(STATE.colorBy==='round'){
     html = `<div style="font-weight:600;margin-bottom:4px">Sampling dataset</div>
       <div class="legend-row">${swatch(DATASET_COLOR['1'])} Round 1</div>
@@ -962,7 +1165,7 @@ function buildLegend(){
    SECTION 6 — UI WIRING (Phase 1)
    ========================================================================= */
 function syncControlVisibility(){
-  const needAnalyte = ['conc','ratio'].includes(STATE.colorBy);
+  const needAnalyte = ['conc','ratio','doc'].includes(STATE.colorBy);
   document.getElementById('analyteWrap').style.display = needAnalyte ? '' : 'none';
 }
 function applyDisplay(){
@@ -996,7 +1199,7 @@ document.getElementById('legendHead').addEventListener('click', ()=>{
 /* =========================================================================
    SECTION 7 — FILTERS & LIVE STATS
    ========================================================================= */
-STATE.layers = { heat:false, idw:false, grid:false };
+STATE.layers = { heat:false, idw:false, grid:false, hi:false };
 const $ = id => document.getElementById(id);
 
 function readFilters(){
@@ -1019,8 +1222,13 @@ function updateThrSlider(){
 }
 function computeStats(feats){
   const sampled = feats.filter(f=>f.properties.sampled);
+  const his = sampled.map(f=>hazardIndex(f.properties)).filter(isNum);
   const st = { n:feats.length, nSampled:sampled.length,
-    rod: feats.filter(f=>f.properties.rod_exceed==='YES').length, perA:{} };
+    rod: feats.filter(f=>f.properties.rod_exceed==='YES').length,
+    hi1: his.filter(h=>h>=1).length,
+    hi3: his.filter(h=>h>=3).length,
+    bottomedHg: sampled.filter(f=>deepestExceedance(f.properties,'Hg').bottomedOut).length,
+    perA:{} };
   ANALYTES.forEach(an=>{
     const vals = sampled.map(f=>num(f.properties[an])).filter(v=>v!==null).sort((a,b)=>a-b);
     if(!vals.length){ st.perA[an]=null; return; }
@@ -1036,7 +1244,10 @@ function renderStats(){
   const st = computeStats(filteredFeatures());
   let h = `<div class="statline"><span>Showing</span><b>${st.n}</b></div>
     <div class="statline"><span>Sampled</span><b>${st.nSampled}</b></div>
-    <div class="statline"><span>ROD exceedances</span><b style="color:var(--red)">${st.rod}</b></div>`;
+    <div class="statline"><span>ROD exceedances</span><b style="color:var(--red)">${st.rod}</b></div>
+    <div class="statline"><span>HI ≥ 1 (combined)</span><b style="color:${HI_COLOR.elevated};text-shadow:0 0 1px rgba(0,0,0,.4)">${st.hi1}</b></div>
+    <div class="statline"><span>HI ≥ 3 (high+)</span><b style="color:${HI_COLOR.severe}">${st.hi3}</b></div>
+    <div class="statline" title="Samples where the deepest available interval still exceeds ROD for Hg — plume may continue deeper"><span>Hg bottomed-out</span><b style="color:${DOC_COLOR.verydeep}">${st.bottomedHg}</b></div>`;
   h += `<table class="stats-table"><tr><th>${UNITS}</th><th>min</th><th>mean</th><th>med</th><th>max</th><th>%&gt;ROD</th></tr>`;
   ANALYTES.forEach(an=>{
     const a = st.perA[an];
@@ -1047,7 +1258,7 @@ function renderStats(){
 }
 function applyFilters(){
   readFilters(); updateThrSlider();
-  buildMarkers(); renderStats(); updateHeat(); updateIDW();
+  buildMarkers(); renderStats(); updateHeat(); updateIDW(); updateHI();
   scheduleAutosave();
 }
 
@@ -1147,6 +1358,51 @@ function updateIDW(){
   if(!STATE.layers.idw) return;
   const r = buildIDW(); if(!r) return;
   idwOverlay = L.imageOverlay(r.url, r.bounds, { opacity:+$('idwOp').value, interactive:false }).addTo(map);
+}
+
+// ---- HAZARD INDEX SURFACE (IDW over HI values, RAGS-band categorical fill) ----
+let hiOverlay = null;
+function buildHISurface(){
+  const pts = filteredFeatures().filter(f=>isNum(hazardIndex(f.properties)));
+  if(pts.length < 3) return null;
+  const fc = turf.featureCollection(pts.map(f=>turf.point(f.geometry.coordinates,{v:hazardIndex(f.properties)})));
+  let hull; try{ hull = turf.convex(fc); }catch(e){ hull=null; }
+  if(!hull) return null;
+  const [w,s,e,n] = turf.bbox(hull);
+  const res = +$('hiRes').value, pow = +$('hiPow').value;
+  const spanX=(e-w)||1e-9, spanY=(n-s)||1e-9;
+  let W,H;
+  if(spanX>=spanY){ W=res; H=Math.max(8,Math.round(res*spanY/spanX)); }
+  else { H=res; W=Math.max(8,Math.round(res*spanX/spanY)); }
+  const samples = pts.map(f=>({ x:f.geometry.coordinates[0], y:f.geometry.coordinates[1], v:hazardIndex(f.properties) }));
+  const cv = document.createElement('canvas'); cv.width=W; cv.height=H;
+  const ctx = cv.getContext('2d'); const img = ctx.createImageData(W,H);
+  for(let row=0; row<H; row++){
+    const lat = n - ((row+0.5)/H)*(n-s);
+    for(let col=0; col<W; col++){
+      const lon = w + ((col+0.5)/W)*(e-w);
+      const idx = (row*W+col)*4;
+      if(!turf.booleanPointInPolygon(turf.point([lon,lat]), hull)){ img.data[idx+3]=0; continue; }
+      let nu=0, de=0, exact=null;
+      for(const sp of samples){
+        const dx=lon-sp.x, dy=lat-sp.y, d2=dx*dx+dy*dy;
+        if(d2<1e-14){ exact=sp.v; break; }
+        const wgt = 1/Math.pow(d2, pow/2);
+        nu += wgt*sp.v; de += wgt;
+      }
+      const val = exact!==null ? exact : nu/de;
+      const rgb = hexToRgb(HI_COLOR[hiBand(val)]);
+      img.data[idx]=rgb[0]; img.data[idx+1]=rgb[1]; img.data[idx+2]=rgb[2]; img.data[idx+3]=255;
+    }
+  }
+  ctx.putImageData(img,0,0);
+  return { url:cv.toDataURL(), bounds:[[s,w],[n,e]] };
+}
+function updateHI(){
+  if(hiOverlay){ map.removeLayer(hiOverlay); hiOverlay=null; }
+  if(!STATE.layers.hi) return;
+  const r = buildHISurface(); if(!r) return;
+  hiOverlay = L.imageOverlay(r.url, r.bounds, { opacity:+$('hiOp').value, interactive:false }).addTo(map);
 }
 
 /* =========================================================================
@@ -1391,7 +1647,8 @@ function exportDataGeojson(){
 }
 function exportStats(){
   const st=computeStats(filteredFeatures());
-  const rows=[['metric','value'],['showing',st.n],['sampled',st.nSampled],['ROD_exceedances',st.rod]];
+  const rows=[['metric','value'],['showing',st.n],['sampled',st.nSampled],['ROD_exceedances',st.rod],
+    ['HI_ge_1', st.hi1],['HI_ge_3', st.hi3],['Hg_bottomed_out', st.bottomedHg]];
   ANALYTES.forEach(an=>{ const a=st.perA[an]; if(a){
     rows.push([an+'_min',a.min],[an+'_mean',a.mean.toFixed(2)],[an+'_median',a.median],[an+'_max',a.max],[an+'_pct_over_ROD',a.pctExc.toFixed(1)]);
   }});
@@ -1404,11 +1661,19 @@ function exportShapes(){
 }
 function exportCsv(){
   const feats = filteredFeatures();
-  const cols = ['id','dataset','source','round','sampled','lat','lon','Hg','As','Sb','Tl','Hg_deep','As_deep','Sb_deep','Tl_deep','Hg_OM','OM_effect','depth','coord_source','rod_exceed','rod_drivers'];
+  const cols = ['id','dataset','source','round','sampled','lat','lon','Hg','As','Sb','Tl','Hg_deep','As_deep','Sb_deep','Tl_deep','Hg_OM','OM_effect','depth','coord_source','rod_exceed','rod_drivers','HI','HI_band','DOC_band','DOC_bottomed_out'];
   const esc = v => v==null ? '' : /[",\n]/.test(String(v)) ? '"'+String(v).replace(/"/g,'""')+'"' : String(v);
   const rows = [cols.join(',')];
-  feats.forEach(f=>{ const p=f.properties; const o={...p, lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0]};
-    rows.push(cols.map(c=>esc(o[c])).join(',')); });
+  feats.forEach(f=>{
+    const p=f.properties;
+    const hi = hazardIndex(p);
+    const doc = deepestExceedance(p, 'Hg');
+    const o = {...p, lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0],
+               HI: isNum(hi) ? hi.toFixed(3) : '',
+               HI_band: isNum(hi) ? hiBand(hi) : '',
+               DOC_band: doc.band, DOC_bottomed_out: doc.bottomedOut ? 'Y':'N'};
+    rows.push(cols.map(c=>esc(o[c])).join(','));
+  });
   download('abp_points_filtered.csv', rows.join('\n'), 'text/csv');
 }
 function handleImport(file){
@@ -1478,7 +1743,8 @@ function loadSession(silent){
   set('fExceed',STATE.filters.exceed); set('fDepth',STATE.filters.depth);
   set('fThr',STATE.filters.thr);
   if(d.layers) Object.assign(STATE.layers,d.layers);
-  set('toggleHeat',STATE.layers.heat); set('toggleIDW',STATE.layers.idw); set('toggleGrid',STATE.layers.grid);
+  set('toggleHeat',STATE.layers.heat); set('toggleIDW',STATE.layers.idw); set('toggleGrid',STATE.layers.grid); set('toggleHI',!!STATE.layers.hi);
+  $('hiCtl').style.display = STATE.layers.hi?'':'none';
   $('heatCtl').style.display=STATE.layers.heat?'':'none';
   $('idwCtl').style.display=STATE.layers.idw?'':'none';
   $('gridCtl').style.display=STATE.layers.grid?'':'none';
@@ -1501,6 +1767,11 @@ $('togglePoints').addEventListener('change', e=>{ STATE.showPoints=e.target.chec
 $('toggleHeat').addEventListener('change', e=>{ STATE.layers.heat=e.target.checked; $('heatCtl').style.display=e.target.checked?'':'none'; updateHeat(); buildLegend(); scheduleAutosave(); });
 $('toggleIDW').addEventListener('change', e=>{ STATE.layers.idw=e.target.checked; $('idwCtl').style.display=e.target.checked?'':'none'; updateIDW(); scheduleAutosave(); });
 $('toggleGrid').addEventListener('change', e=>{ STATE.layers.grid=e.target.checked; $('gridCtl').style.display=e.target.checked?'':'none'; updateGrid(); scheduleAutosave(); });
+$('toggleHI').addEventListener('change', e=>{ STATE.layers.hi=e.target.checked; $('hiCtl').style.display=e.target.checked?'':'none'; updateHI(); scheduleAutosave(); });
+['hiRes','hiPow','hiOp'].forEach(id=>$(id).addEventListener('input', e=>{
+  const v=$(id+'V'); if(v) v.textContent=e.target.value;
+  if(id==='hiOp' && hiOverlay){ hiOverlay.setOpacity(+e.target.value); } else updateHI();
+}));
 // heat controls
 ['heatRadius','heatBlur','heatMax','heatOp'].forEach(id=>$(id).addEventListener('input', e=>{
   const v=$(id+'V'); if(v) v.textContent=e.target.value;
@@ -1599,7 +1870,7 @@ document.querySelector('[data-sec="om"] > h2').addEventListener('click', ()=>{
 const _applyDisplay = applyDisplay;
 applyDisplay = function(){
   _applyDisplay();
-  updateThrSlider(); renderStats(); updateHeat(); updateIDW();
+  updateThrSlider(); renderStats(); updateHeat(); updateIDW(); updateHI();
   scheduleAutosave();
 };
 
