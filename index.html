@@ -265,22 +265,23 @@ body:not(.with-panel) #coords{left:0}
     <h2>Layers <span class="chev">▾</span></h2>
     <div class="body">
       <label class="checkrow"><input type="checkbox" id="togglePoints" checked> Sample points</label>
-      <label class="checkrow"><input type="checkbox" id="toggleHeat"> Heat map (ROD exceedance surface)</label>
+      <label class="checkrow"><input type="checkbox" id="toggleHeat"> Heat map (ROD exceedance density)</label>
       <div id="heatCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
         <label class="field">Analyte</label>
         <select id="heatAnalyte">
           <option value="Hg">Mercury (Hg)</option><option value="As">Arsenic (As)</option>
           <option value="Sb">Antimony (Sb)</option><option value="Tl">Thallium (Tl)</option>
         </select>
-        <label class="field">Resolution <span id="heatResV">110</span> px</label>
-        <input type="range" id="heatRes" min="40" max="200" step="10" value="110">
-        <label class="field">IDW power <span id="heatPowV">2</span></label>
-        <input type="range" id="heatPow" min="1" max="4" step="0.5" value="2">
-        <label class="field">Opacity <span id="heatOpV">0.75</span></label>
-        <input type="range" id="heatOp" min="0.1" max="1" step="0.05" value="0.75">
-        <label class="checkrow"><input type="checkbox" id="heatContour" checked> Hard contour at ROD</label>
-        <label class="checkrow"><input type="checkbox" id="heatLog" checked> Log scale (Hg ratio)</label>
-        <p class="hint" style="margin:4px 0 0">Per-pixel IDW surface, coloured by log-ratio of the interpolated concentration to the analyte's ROD goal: muted cool below, neutral at, sequential warm above, with a hard black isoline at ROD. Clipped to the convex hull of sampled points.</p>
+        <label class="field">Radius <span id="heatRadiusV">36</span></label>
+        <input type="range" id="heatRadius" min="8" max="80" value="36">
+        <label class="field">Blur <span id="heatBlurV">28</span></label>
+        <input type="range" id="heatBlur" min="1" max="50" value="28">
+        <label class="field">Max intensity <span id="heatMaxV">1.0</span></label>
+        <input type="range" id="heatMax" min="0.1" max="1" step="0.05" value="1">
+        <label class="field">Opacity <span id="heatOpV">0.8</span></label>
+        <input type="range" id="heatOp" min="0.1" max="1" step="0.05" value="0.8">
+        <label class="checkrow"><input type="checkbox" id="heatLog" checked> Log scale (Hg)</label>
+        <p class="hint" style="margin:4px 0 0">Smooth kernel-density heat of <b>samples that exceed ROD</b> only — below-threshold points contribute nothing, so clean zones stay transparent. Warmer = larger exceedance / denser hot spots.</p>
       </div>
       <label class="checkrow"><input type="checkbox" id="toggleIDW"> IDW surface (clipped to hull)</label>
       <div id="idwCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
@@ -950,9 +951,9 @@ function buildLegend(){
   if(STATE.layers.heat){
     const hg = `linear-gradient(to right, ${Object.values(HEAT_GRADIENT).join(',')})`;
     const an = $('heatAnalyte').value, goal = heatGoal();
-    html += `<div style="font-weight:600;margin:8px 0 4px">Heat: ${an} vs ${goal}</div>
+    html += `<div style="font-weight:600;margin:8px 0 4px">Heat — ${an} exceedances (vs ${goal})</div>
       <div class="legend-ramp" style="background:${hg}"></div>
-      <div class="legend-scale"><span>below goal</span><span>at goal</span><span>exceeds</span></div>`;
+      <div class="legend-scale"><span>at ROD</span><span>hot spot</span></div>`;
   }
   body.innerHTML = html + shapeGlyph();
 }
@@ -1053,100 +1054,45 @@ function applyFilters(){
 /* =========================================================================
    SECTION 8 — HEAT MAP (Leaflet.heat, analyte-weighted)
    ========================================================================= */
-// HEAT MAP — per-pixel IDW surface coloured by log-ratio of concentration to ROD.
-// Convergent design from three reviewers: drop kernel density (overlap artefacts),
-// use IDW, log ratio clamped to ±2 decades, hybrid muted-cool / neutral / warm-sequential
-// palette, hard black isoline at the ROD threshold, clipped to the convex hull.
-let heatOverlay = null;
-const HEAT_LOG_SPAN = 2;             // ±2 decades around ROD reach the palette extremes
-// Hybrid palette: muted cool below ROD, neutral at the pivot, sequential warm above.
-const HEAT_GRADIENT = {
-  0.00:'#d8e4eb', 0.30:'#c2d4dd', 0.45:'#e6ebee',
-  0.50:'#f7f7f7',
-  0.55:'#fee08b', 0.70:'#fdae61', 0.85:'#d73027', 1.00:'#7f0000'
-};
-const HEAT_STOPS = Object.keys(HEAT_GRADIENT).map(Number).sort((a,b)=>a-b);
+// HEAT MAP — smooth kernel-density of ROD-EXCEEDING samples only.
+// Below-threshold points contribute weight 0, so overlapping clean samples can
+// no longer sum into a false-positive red zone. Warmer = larger exceedance or
+// denser hot spot. Layer is L.heatLayer (leaflet.heat).
+let heatLayer = null;
+// Warm-only gradient (yellow -> orange -> red -> deep red), starts visible at low alpha.
+const HEAT_GRADIENT = { 0.10:'#fee08b', 0.35:'#fdae61', 0.60:'#f46d43', 0.80:'#d73027', 1.00:'#7f0000' };
+const HEAT_LOG_SPAN = 1.5;            // ratio of 10^SPAN above ROD reaches full red (Hg log mode)
 function heatGoal(){ return 'ROD'; }
-function paletteColor(t){
-  t = Math.max(0, Math.min(1, t));
-  let i=0; while(i<HEAT_STOPS.length-1 && t>HEAT_STOPS[i+1]) i++;
-  const a=HEAT_STOPS[i], b=HEAT_STOPS[i+1], f=(t-a)/((b-a)||1);
-  return hexToRgb(lerpColor(HEAT_GRADIENT[a], HEAT_GRADIENT[b], f));
-}
-function buildHeatSurface(){
+function heatPoints(){
   const an = $('heatAnalyte').value;
-  const useLog = $('heatLog').checked;
-  const showContour = $('heatContour').checked;
-  const res = +$('heatRes').value, pow = +$('heatPow').value;
+  const useLog = $('heatLog').checked && an==='Hg';
   const thr = CRITERIA.ROD[an];
-  // include ALL sampled points with a value (so the surface reflects actual data, not the active filter)
-  const pts = DATA.features.filter(f=>f.properties.sampled && num(f.properties[an])!==null);
-  if(pts.length < 3) return null;
-  const fc = turf.featureCollection(pts.map(f=>turf.point(f.geometry.coordinates,{v:f.properties[an]})));
-  let hull; try{ hull = turf.convex(fc); }catch(e){ hull=null; }
-  if(!hull) return null;
-  const [w,s,e,n] = turf.bbox(hull);
-  const spanX=(e-w)||1e-9, spanY=(n-s)||1e-9;
-  let W,H;
-  if(spanX>=spanY){ W=res; H=Math.max(8,Math.round(res*spanY/spanX)); }
-  else { H=res; W=Math.max(8,Math.round(res*spanX/spanY)); }
-  const samples = pts.map(f=>({ x:f.geometry.coordinates[0], y:f.geometry.coordinates[1], v:Math.max(f.properties[an],1e-6) }));
-  // pass 1: compute IDW value at each pixel + an "inside hull" mask
-  const val = new Float32Array(W*H), inside = new Uint8Array(W*H);
-  for(let row=0; row<H; row++){
-    const lat = n - ((row+0.5)/H)*(n-s);
-    for(let col=0; col<W; col++){
-      const lon = w + ((col+0.5)/W)*(e-w);
-      const k = row*W+col;
-      if(!turf.booleanPointInPolygon(turf.point([lon,lat]), hull)){ val[k]=-1; continue; }
-      inside[k]=1;
-      let nu=0, de=0, exact=null;
-      for(const sp of samples){
-        const dx=lon-sp.x, dy=lat-sp.y, d2=dx*dx+dy*dy;
-        if(d2<1e-14){ exact=sp.v; break; }
-        const wgt = 1/Math.pow(d2, pow/2);
-        nu += wgt*sp.v; de += wgt;
-      }
-      val[k] = exact!==null ? exact : nu/de;
+  return filteredFeatures().map(f=>{
+    const p = f.properties;
+    const v = num(p[an]);
+    if(v===null || v<=0) return null;
+    if(v < thr) return null;                                       // ← key: clean samples contribute nothing
+    let t;
+    if(useLog){
+      // log ratio mapped so v==thr -> low end, v==thr*10^SPAN -> full red
+      t = Math.log10(v/thr) / HEAT_LOG_SPAN;
+    } else {
+      // linear ratio: v==thr -> 0, v==2*thr -> 1
+      t = (v/thr - 1);
     }
-  }
-  // pass 2: colour each inside pixel from log-ratio; mark threshold-crossing pixels for the contour
-  const cv = document.createElement('canvas'); cv.width=W; cv.height=H;
-  const ctx = cv.getContext('2d'); const img = ctx.createImageData(W,H);
-  for(let row=0; row<H; row++){
-    for(let col=0; col<W; col++){
-      const k = row*W+col, idx = k*4;
-      if(!inside[k]){ img.data[idx+3]=0; continue; }
-      const v = val[k];
-      let t;
-      if(useLog){
-        const r = Math.log10(Math.max(v,1e-6)/thr);                  // log ratio to ROD
-        t = (r + HEAT_LOG_SPAN) / (2*HEAT_LOG_SPAN);                 // 0..1 with t=0.5 at ROD
-      } else {
-        t = (v/thr) * 0.5;                                           // linear: t=0.5 at ROD, 1 at 2×ROD
-      }
-      const rgb = paletteColor(t);
-      img.data[idx]=rgb[0]; img.data[idx+1]=rgb[1]; img.data[idx+2]=rgb[2]; img.data[idx+3]=255;
-      // contour: this pixel is on the boundary if any 4-neighbor crosses the ROD line
-      if(showContour){
-        const cur = v >= thr;
-        const nb = [k-1, k+1, k-W, k+W];
-        for(const j of nb){
-          if(j<0 || j>=W*H) continue;
-          if(!inside[j]) continue;
-          if((val[j] >= thr) !== cur){ img.data[idx]=12; img.data[idx+1]=12; img.data[idx+2]=12; break; }
-        }
-      }
-    }
-  }
-  ctx.putImageData(img,0,0);
-  return { url:cv.toDataURL(), bounds:[[s,w],[n,e]] };
+    return [f.geometry.coordinates[1], f.geometry.coordinates[0], Math.max(0.15, Math.min(1, t))];
+  }).filter(Boolean);
 }
 function updateHeat(){
-  if(heatOverlay){ map.removeLayer(heatOverlay); heatOverlay=null; }
-  if(!STATE.layers.heat) return;
-  const r = buildHeatSurface(); if(!r) return;
-  heatOverlay = L.imageOverlay(r.url, r.bounds, { opacity:+$('heatOp').value, interactive:false }).addTo(map);
+  if(!STATE.layers.heat){ if(heatLayer){ map.removeLayer(heatLayer); heatLayer=null; } return; }
+  const opts = {
+    radius: +$('heatRadius').value, blur: +$('heatBlur').value, max: +$('heatMax').value,
+    minOpacity: 0.10, gradient: HEAT_GRADIENT
+  };
+  const pts = heatPoints();
+  if(!heatLayer){ heatLayer = L.heatLayer(pts, opts).addTo(map); }
+  else { heatLayer.setLatLngs(pts); heatLayer.setOptions(opts); }
+  if(heatLayer._canvas) heatLayer._canvas.style.opacity = $('heatOp').value;
 }
 
 /* =========================================================================
@@ -1556,14 +1502,12 @@ $('toggleHeat').addEventListener('change', e=>{ STATE.layers.heat=e.target.check
 $('toggleIDW').addEventListener('change', e=>{ STATE.layers.idw=e.target.checked; $('idwCtl').style.display=e.target.checked?'':'none'; updateIDW(); scheduleAutosave(); });
 $('toggleGrid').addEventListener('change', e=>{ STATE.layers.grid=e.target.checked; $('gridCtl').style.display=e.target.checked?'':'none'; updateGrid(); scheduleAutosave(); });
 // heat controls
-['heatRes','heatPow','heatOp'].forEach(id=>$(id).addEventListener('input', e=>{
+['heatRadius','heatBlur','heatMax','heatOp'].forEach(id=>$(id).addEventListener('input', e=>{
   const v=$(id+'V'); if(v) v.textContent=e.target.value;
-  if(id==='heatOp' && heatOverlay) heatOverlay.setOpacity(+e.target.value);
-  else updateHeat();
+  updateHeat();
 }));
 $('heatAnalyte').addEventListener('change', ()=>{ updateHeat(); buildLegend(); });
 $('heatLog').addEventListener('change', updateHeat);
-$('heatContour').addEventListener('change', updateHeat);
 // idw controls
 ['idwRes','idwPow','idwOp'].forEach(id=>$(id).addEventListener('input', e=>{ const v=$(id+'V'); if(v) v.textContent=e.target.value; }));
 $('idwOp').addEventListener('input', updateIDW);
