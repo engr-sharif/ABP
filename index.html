@@ -129,9 +129,9 @@ select:focus,input[type=text]:focus,input[type=number]:focus{border-color:var(--
 .sample-label.leaflet-tooltip-left:before,.sample-label.leaflet-tooltip-right:before{display:none}
 
 /* Popups */
-.leaflet-popup-content{margin:10px 12px;max-height:340px;overflow:auto}
+.leaflet-popup-content{margin:10px 12px;max-height:380px;overflow:auto}
 .popup{font-size:12px;line-height:1.45}
-.popup h4{margin:0 0 5px;font-size:13px}
+.popup h4{margin:0 0 5px;font-size:13px;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
 .popup table{border-collapse:collapse;width:100%;margin:4px 0}
 .popup td{padding:1px 5px 1px 0;vertical-align:top}
 .popup td.k{color:var(--muted);white-space:nowrap}
@@ -139,6 +139,19 @@ select:focus,input[type=text]:focus,input[type=number]:focus{border-color:var(--
 .popup .exc-no{color:var(--green);font-weight:700}
 .popup .exc-ns{color:var(--gray);font-weight:700}
 .popup .copybtn{margin-top:6px;font-size:11px;padding:3px 7px}
+
+/* Boring-log popup */
+.popup-bl .bl-tag{font-weight:400;color:var(--muted);font-size:11px}
+.popup-bl .bl-meta{font-size:10.5px;color:var(--muted);margin:2px 0 6px}
+.popup-bl .bl-notes{font-size:11px;color:var(--muted);margin-top:6px;border-top:1px solid var(--line);padding-top:4px}
+.popup-bl .bl-wrap{display:flex;gap:10px;align-items:flex-start;margin-top:4px}
+.popup-bl .bl-svg{flex:none}
+.popup-bl .bl-table{font-size:11px;border-collapse:collapse;flex:1;font-variant-numeric:tabular-nums}
+.popup-bl .bl-table th,.popup-bl .bl-table td{padding:2px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.popup-bl .bl-table th{background:rgba(127,127,127,.08);font-weight:600;color:var(--muted)}
+.popup-bl .bl-table td.lbl,.popup-bl .bl-table th.lbl{text-align:left}
+.popup-bl .bl-table td.over{color:var(--red);font-weight:700}
+.popup-bl .bl-table td.flag{text-align:center;padding-left:4px}
 
 /* North arrow (Leaflet control, stacks under zoom at top-left) */
 .na-ctrl{width:42px;height:auto;background:var(--overlay);border:1px solid var(--line);border-radius:6px;
@@ -252,23 +265,22 @@ body:not(.with-panel) #coords{left:0}
     <h2>Layers <span class="chev">▾</span></h2>
     <div class="body">
       <label class="checkrow"><input type="checkbox" id="togglePoints" checked> Sample points</label>
-      <label class="checkrow"><input type="checkbox" id="toggleHeat"> Heat map (kernel density)</label>
+      <label class="checkrow"><input type="checkbox" id="toggleHeat"> Heat map (ROD exceedance surface)</label>
       <div id="heatCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
-        <label class="field">Weight by</label>
+        <label class="field">Analyte</label>
         <select id="heatAnalyte">
           <option value="Hg">Mercury (Hg)</option><option value="As">Arsenic (As)</option>
           <option value="Sb">Antimony (Sb)</option><option value="Tl">Thallium (Tl)</option>
         </select>
-        <label class="field">Radius <span id="heatRadiusV">28</span></label>
-        <input type="range" id="heatRadius" min="8" max="80" value="28">
-        <label class="field">Blur <span id="heatBlurV">20</span></label>
-        <input type="range" id="heatBlur" min="1" max="50" value="20">
-        <label class="field">Max intensity <span id="heatMaxV">1.0</span></label>
-        <input type="range" id="heatMax" min="0.1" max="1" step="0.05" value="1">
+        <label class="field">Resolution <span id="heatResV">110</span> px</label>
+        <input type="range" id="heatRes" min="40" max="200" step="10" value="110">
+        <label class="field">IDW power <span id="heatPowV">2</span></label>
+        <input type="range" id="heatPow" min="1" max="4" step="0.5" value="2">
         <label class="field">Opacity <span id="heatOpV">0.75</span></label>
         <input type="range" id="heatOp" min="0.1" max="1" step="0.05" value="0.75">
-        <label class="checkrow"><input type="checkbox" id="heatLog" checked> Log-weight (Hg)</label>
-        <p class="hint" style="margin:4px 0 0">Below ROD = cool, above ROD = warm, with a hard contour at the threshold. Pivot is on the ROD remediation goal for the chosen analyte.</p>
+        <label class="checkrow"><input type="checkbox" id="heatContour" checked> Hard contour at ROD</label>
+        <label class="checkrow"><input type="checkbox" id="heatLog" checked> Log scale (Hg ratio)</label>
+        <p class="hint" style="margin:4px 0 0">Per-pixel IDW surface, coloured by log-ratio of the interpolated concentration to the analyte's ROD goal: muted cool below, neutral at, sequential warm above, with a hard black isoline at ROD. Clipped to the convex hull of sampled points.</p>
       </div>
       <label class="checkrow"><input type="checkbox" id="toggleIDW"> IDW surface (clipped to hull)</label>
       <div id="idwCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
@@ -410,10 +422,12 @@ body:not(.with-panel) #coords{left:0}
   </div>
 
   <div class="section closed" data-sec="om">
-    <h2>OM vs Shallow Hg (R2) <span class="chev">▾</span></h2>
+    <h2>OM Correlations (R2) <span class="chev">▾</span></h2>
     <div class="body">
-      <p class="hint">Round-2 humus-layer Hg vs co-located shallow soil Hg. Points above the 1:1 line have higher Hg in organic matter.</p>
+      <p class="hint"><b>Top — OM vs Shallow Hg.</b> Round-2 humus-layer Hg vs co-located shallow (0–0.5 ft) soil Hg. Points above the 1:1 line have higher Hg in organic matter than in the underlying surface soil.</p>
       <canvas id="omChart" height="220"></canvas>
+      <p class="hint" style="margin-top:12px"><b>Bottom — OM vs Deep Hg.</b> Same humus-layer Hg vs co-located deep (1–1.5 ft) soil Hg, for R2 samples that have a deep result.</p>
+      <canvas id="omDeepChart" height="220"></canvas>
     </div>
   </div>
 
@@ -699,42 +713,141 @@ function svgMarker(p, mode){
   return L.divIcon({ className:'sample-icon', html, iconSize:[S,S], iconAnchor:[c,c] });
 }
 
+// Build the list of vertical layers (OM + soil intervals) for one sample's boring log.
+function sampleLayers(p){
+  const layers = [];
+  if(isNum(p.Hg_OM)){
+    const exc = p.Hg_OM > CRITERIA.ROD.Hg;
+    layers.push({ kind:'OM', label:'OM (humus)', top:null, bot:null,
+      values:{Hg:p.Hg_OM}, exceed:exc, note:p.OM_effect });
+  }
+  if(p.source==='EA' && Array.isArray(p.profile) && p.profile.length){
+    p.profile.forEach(pr=>{
+      const m = String(pr.depth||'').match(/([\d.]+)\s*-\s*([\d.]+)/);
+      const top = m ? +m[1] : 0, bot = m ? +m[2] : 0.5;
+      const values = {Hg:pr.Hg, As:pr.As, Sb:pr.Sb, Tl:pr.Tl};
+      const exc = ANALYTES.some(a=>isNum(values[a]) && values[a] > CRITERIA.ROD[a]);
+      layers.push({ kind:'soil', label:`${top}–${bot} ft`, top, bot, values, exceed:exc });
+    });
+  } else if(p.round===2){
+    if(p.sampled){
+      const values = {Hg:p.Hg, As:p.As, Sb:p.Sb, Tl:p.Tl};
+      const exc = ANALYTES.some(a=>isNum(values[a]) && values[a] > CRITERIA.ROD[a]);
+      layers.push({ kind:'soil', label:'0–0.5 ft (shallow)', top:0, bot:0.5, values, exceed:exc });
+    }
+    if(['Hg_deep','As_deep','Sb_deep','Tl_deep'].some(k=>isNum(p[k]))){
+      const values = {Hg:p.Hg_deep, As:p.As_deep, Sb:p.Sb_deep, Tl:p.Tl_deep};
+      const exc = ANALYTES.some(a=>isNum(values[a]) && values[a] > CRITERIA.ROD[a]);
+      layers.push({ kind:'soil', label:'1–1.5 ft (deep)', top:1, bot:1.5, values, exceed:exc });
+    }
+  } else if(p.sampled){
+    const values = {Hg:p.Hg, As:p.As, Sb:p.Sb, Tl:p.Tl};
+    const exc = ANALYTES.some(a=>isNum(values[a]) && values[a] > CRITERIA.ROD[a]);
+    layers.push({ kind:'soil', label:'0–0.5 ft (shallow)', top:0, bot:0.5, values, exceed:exc });
+  }
+  // EA features with no profile but a _sub interval
+  if(p.source==='EA' && !(Array.isArray(p.profile) && p.profile.length) && isNum(p.Hg_sub)){
+    const values = {Hg:p.Hg_sub, As:p.As_sub, Sb:p.Sb_sub, Tl:p.Tl_sub};
+    const exc = ANALYTES.some(a=>isNum(values[a]) && values[a] > CRITERIA.ROD[a]);
+    layers.push({ kind:'soil', label:'1–1.5 ft (sub)', top:1, bot:1.5, values, exceed:exc });
+  }
+  return layers;
+}
+// Render an SVG mini boring-log: OM humus above grade, soil intervals scaled to feet, coloured by ROD exceedance.
+function boringLogSvg(layers){
+  const W = 72, totalH = 150;
+  const omLayers = layers.filter(l=>l.kind==='OM'), soilLayers = layers.filter(l=>l.kind==='soil');
+  const maxBot = Math.max(0.5, ...soilLayers.map(l=>l.bot||0.5));
+  const omH = omLayers.length ? 14 : 0, ground = 14;
+  const soilH = totalH - omH - ground;
+  const soilY0 = omH + ground;
+  const ftPx = soilH / maxBot;
+  function fill(l){
+    if(l.kind==='OM') return l.exceed ? '#8c5a25' : '#c2a878';                   // humus brown
+    if(!l.values || !ANALYTES.some(a=>isNum(l.values[a]))) return '#bdbdbd';      // not sampled
+    return l.exceed ? '#d7191c' : '#3a8c40';
+  }
+  let svg = `<svg width="${W}" height="${totalH}" viewBox="0 0 ${W} ${totalH}" style="display:block">`;
+  // ft grid + tick labels
+  for(let f=0; f<=maxBot+0.001; f+=0.5){
+    const y = soilY0 + f*ftPx;
+    svg += `<line x1="6" y1="${y}" x2="${W-6}" y2="${y}" stroke="#e0e0e0" stroke-width="0.5"/>`;
+    svg += `<text x="${W-1}" y="${y+2}" font-size="7" fill="#888" text-anchor="end">${f}'</text>`;
+  }
+  // ground surface line
+  svg += `<line x1="0" y1="${soilY0}" x2="${W}" y2="${soilY0}" stroke="#222" stroke-width="1.2"/>`;
+  // OM block(s)
+  omLayers.forEach(l=>{
+    svg += `<rect x="10" y="${soilY0-omH+1}" width="${W-20}" height="${omH-2}" fill="${fill(l)}" stroke="#5d3a14" stroke-width="0.6"/>`;
+    svg += `<text x="${W/2}" y="${soilY0-3}" font-size="8" font-weight="700" text-anchor="middle" fill="#fff">OM</text>`;
+  });
+  // soil block(s)
+  soilLayers.forEach(l=>{
+    const y0 = soilY0 + (l.top||0)*ftPx, y1 = soilY0 + (l.bot||0.5)*ftPx;
+    const h = Math.max(2, y1-y0);
+    const sampled = l.values && ANALYTES.some(a=>isNum(l.values[a]));
+    svg += `<rect x="10" y="${y0}" width="${W-20}" height="${h}" fill="${fill(l)}"
+            stroke="#222" stroke-width="0.6" ${sampled?'':'stroke-dasharray="3,2"'}/>`;
+    if(isNum(l.values && l.values.Hg) && h>=12){
+      svg += `<text x="${W/2}" y="${y0+h/2+3}" font-size="8" font-weight="700" text-anchor="middle" fill="#fff">${Math.round(l.values.Hg)}</text>`;
+    }
+  });
+  svg += `</svg>`;
+  return svg;
+}
 function popupHtml(p){
-  const ex = (v)=> v==='YES'?'<span class="exc-yes">YES</span>'
-                 : v==='NO'?'<span class="exc-no">NO</span>'
-                 : '<span class="exc-ns">'+(v||'—')+'</span>';
   const fmt = v => isNum(v) ? v.toLocaleString() : '—';
-  const arow = an => {
-    const sh = p[an], dp = p[an+'_deep'];
-    return `<tr><td class="k">${an}</td><td>${fmt(sh)}${isNum(dp)?` <span style="color:#888">/ deep ${fmt(dp)}</span>`:''} ${UNITS}</td></tr>`;
-  };
-  let rows = ANALYTES.map(arow).join('');
-  const omRow = isNum(p.Hg_OM) ? `<tr><td class="k">Hg (OM)</td><td>${fmt(p.Hg_OM)} ${UNITS}${p.OM_effect?` · ${p.OM_effect}`:''}</td></tr>` : '';
+  const layers = sampleLayers(p);
+  const overall = p.rod_exceed==='YES' ? `<span class="exc-yes">⚠ Exceeds ROD</span>`
+                 : p.rod_exceed==='NO' ? `<span class="exc-no">Below ROD</span>`
+                 : `<span class="exc-ns">${p.rod_exceed||'Not sampled'}</span>`;
+  let body;
+  if(layers.length){
+    const rows = layers.map(l=>{
+      const cells = ANALYTES.map(a=>{
+        const v = l.values && l.values[a];
+        if(!isNum(v)) return '<td>—</td>';
+        const over = v > CRITERIA.ROD[a];
+        return `<td${over?' class="over"':''}>${fmt(v)}</td>`;
+      }).join('');
+      const flag = l.exceed
+        ? '<td class="flag exc-yes">⚠</td>'
+        : (l.values && ANALYTES.some(a=>isNum(l.values[a])) ? '<td class="flag exc-no">✓</td>' : '<td class="flag exc-ns">—</td>');
+      return `<tr><td class="lbl">${l.label}${l.note?` <span style="color:#888">· ${l.note}</span>`:''}</td>${cells}${flag}</tr>`;
+    }).join('');
+    body = `<div class="bl-wrap">
+      <div class="bl-svg">${boringLogSvg(layers)}</div>
+      <table class="bl-table">
+        <thead><tr><th class="lbl">Layer</th><th>Hg</th><th>As</th><th>Sb</th><th>Tl</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  } else {
+    body = `<p class="hint">${p.not_sampled_reason||'Not sampled.'}</p>`;
+  }
+  const meta = [
+    p.coord_source ? `<span><b>Coord:</b> ${p.coord_source}</span>` : '',
+    p.depth        ? `<span><b>Depth field:</b> ${p.depth}</span>`  : '',
+    p.has_fd==='Yes' ? `<span><b>Field dup</b></span>`              : '',
+    p.rod_drivers  ? `<span><b>Drivers:</b> ${p.rod_drivers}</span>` : ''
+  ].filter(Boolean).join(' · ');
+  const notes = [
+    p.field_note ? `Field note: ${p.field_note}` : '',
+    p.notes      ? `Notes: ${p.notes}` : ''
+  ].filter(Boolean).join('<br>');
   const txt = [
     `Sample ${p.id} (${datasetLabel(p)})`,
-    p.coord_source?`Coord source: ${p.coord_source}`:'',
     `Sampled: ${p.sampled?'yes':'no'}`,
-    ...ANALYTES.map(a=>`${a}: ${fmt(p[a])}${isNum(p[a+'_deep'])?` / deep ${fmt(p[a+'_deep'])}`:''} ${UNITS}`),
-    isNum(p.Hg_OM)?`Hg(OM): ${fmt(p.Hg_OM)} (${p.OM_effect||''})`:'',
     `ROD: ${p.rod_exceed}${p.rod_drivers?` [${p.rod_drivers}]`:''}`,
-    p.depth?`Depth: ${p.depth}`:'',
+    ...layers.map(l=>`${l.label}: ` + ANALYTES.map(a=>`${a}=${fmt(l.values&&l.values[a])}`).join(', ')),
     p.field_note?`Field note: ${p.field_note}`:'',
-    p.notes?`Notes: ${p.notes}`:'',
-    p.not_sampled_reason?`Not sampled: ${p.not_sampled_reason}`:''
+    p.notes?`Notes: ${p.notes}`:''
   ].filter(Boolean).join('\n');
-  return `<div class="popup">
-    <h4>${p.id} <span style="font-weight:400;color:#888">· ${datasetLabel(p)} · ${shapeOf(p)}</span></h4>
-    <table>
-      ${p.coord_source?`<tr><td class="k">Coord src</td><td>${p.coord_source}</td></tr>`:''}
-      <tr><td class="k">Sampled</td><td>${p.sampled?'Yes':'No'}</td></tr>
-      ${p.depth?`<tr><td class="k">Depth</td><td>${p.depth}</td></tr>`:''}
-      ${rows}${omRow}
-      <tr><td class="k">ROD</td><td>${ex(p.rod_exceed)}${p.rod_drivers?` <span style="color:#888">[${p.rod_drivers}]</span>`:''}</td></tr>
-      ${p.has_fd==='Yes'?'<tr><td class="k">Field dup</td><td>Yes</td></tr>':''}
-      ${p.field_note?`<tr><td class="k">Field note</td><td>${p.field_note}</td></tr>`:''}
-      ${p.notes?`<tr><td class="k">Notes</td><td>${p.notes}</td></tr>`:''}
-      ${p.not_sampled_reason?`<tr><td class="k">Not sampled</td><td>${p.not_sampled_reason}</td></tr>`:''}
-    </table>
+  return `<div class="popup popup-bl">
+    <h4>${p.id} <span class="bl-tag">· ${datasetLabel(p)}</span> ${overall}</h4>
+    ${meta?`<div class="bl-meta">${meta}</div>`:''}
+    ${body}
+    ${notes?`<div class="bl-notes">${notes}</div>`:''}
     <button class="btn copybtn" onclick='navigator.clipboard&&navigator.clipboard.writeText(${JSON.stringify(txt)})'>Copy details</button>
   </div>`;
 }
@@ -759,7 +872,7 @@ function makeMarker(p, lon, lat, opts){
   opts = opts || {};
   const m = L.marker([lat,lon], { icon:svgMarker(p, opts.mode), pane:opts.pane||'markerPane' });
   m.featureProps = p;
-  m.bindPopup(()=>popupHtml(p), { maxWidth:320, minWidth:230 });
+  m.bindPopup(()=>popupHtml(p), { maxWidth:460, minWidth:340 });
   if(STATE.showLabels && !opts.noLabel){
     m.bindTooltip(p.id, { permanent:true, direction:'right', className:'sample-label', offset:[8,0] });
   }
@@ -940,31 +1053,100 @@ function applyFilters(){
 /* =========================================================================
    SECTION 8 — HEAT MAP (Leaflet.heat, analyte-weighted)
    ========================================================================= */
-let heatLayer = null;
-const HEAT_LOG_SPAN = 1.5;        // decades above/below the goal that reach full red/blue (log mode)
-// Diverging palette: BELOW the goal -> blue, AT the goal -> pale, ABOVE the goal -> red.
-const HEAT_GRADIENT = {0.0:'#2c7bb6',0.2:'#5ba3d0',0.4:'#a6d0e6',0.5:'#ffffbf',0.6:'#fdae61',0.8:'#ef6b46',1.0:'#d7191c'};
-// Heat map is always pivoted on the ROD remediation goal.
+// HEAT MAP — per-pixel IDW surface coloured by log-ratio of concentration to ROD.
+// Convergent design from three reviewers: drop kernel density (overlap artefacts),
+// use IDW, log ratio clamped to ±2 decades, hybrid muted-cool / neutral / warm-sequential
+// palette, hard black isoline at the ROD threshold, clipped to the convex hull.
+let heatOverlay = null;
+const HEAT_LOG_SPAN = 2;             // ±2 decades around ROD reach the palette extremes
+// Hybrid palette: muted cool below ROD, neutral at the pivot, sequential warm above.
+const HEAT_GRADIENT = {
+  0.00:'#d8e4eb', 0.30:'#c2d4dd', 0.45:'#e6ebee',
+  0.50:'#f7f7f7',
+  0.55:'#fee08b', 0.70:'#fdae61', 0.85:'#d73027', 1.00:'#7f0000'
+};
+const HEAT_STOPS = Object.keys(HEAT_GRADIENT).map(Number).sort((a,b)=>a-b);
 function heatGoal(){ return 'ROD'; }
-function heatPoints(){
+function paletteColor(t){
+  t = Math.max(0, Math.min(1, t));
+  let i=0; while(i<HEAT_STOPS.length-1 && t>HEAT_STOPS[i+1]) i++;
+  const a=HEAT_STOPS[i], b=HEAT_STOPS[i+1], f=(t-a)/((b-a)||1);
+  return hexToRgb(lerpColor(HEAT_GRADIENT[a], HEAT_GRADIENT[b], f));
+}
+function buildHeatSurface(){
   const an = $('heatAnalyte').value;
   const useLog = $('heatLog').checked;
-  const thr = CRITERIA[heatGoal()][an];
-  return filteredFeatures().map(f=>{
-    const v = num(f.properties[an]); if(v===null || v<=0) return null;
-    const ratio = (isNum(thr) && thr>0) ? v/thr : v;     // <1 below goal, >1 above goal
-    // pivot on the goal: ratio 1 -> 0.5, below -> toward 0 (blue), above -> toward 1 (red)
-    let t = useLog ? 0.5 + 0.5*(Math.log10(ratio)/HEAT_LOG_SPAN)
-                   : 0.5*ratio;
-    return [f.geometry.coordinates[1], f.geometry.coordinates[0], Math.max(0.02,Math.min(1,t))];
-  }).filter(Boolean);
+  const showContour = $('heatContour').checked;
+  const res = +$('heatRes').value, pow = +$('heatPow').value;
+  const thr = CRITERIA.ROD[an];
+  // include ALL sampled points with a value (so the surface reflects actual data, not the active filter)
+  const pts = DATA.features.filter(f=>f.properties.sampled && num(f.properties[an])!==null);
+  if(pts.length < 3) return null;
+  const fc = turf.featureCollection(pts.map(f=>turf.point(f.geometry.coordinates,{v:f.properties[an]})));
+  let hull; try{ hull = turf.convex(fc); }catch(e){ hull=null; }
+  if(!hull) return null;
+  const [w,s,e,n] = turf.bbox(hull);
+  const spanX=(e-w)||1e-9, spanY=(n-s)||1e-9;
+  let W,H;
+  if(spanX>=spanY){ W=res; H=Math.max(8,Math.round(res*spanY/spanX)); }
+  else { H=res; W=Math.max(8,Math.round(res*spanX/spanY)); }
+  const samples = pts.map(f=>({ x:f.geometry.coordinates[0], y:f.geometry.coordinates[1], v:Math.max(f.properties[an],1e-6) }));
+  // pass 1: compute IDW value at each pixel + an "inside hull" mask
+  const val = new Float32Array(W*H), inside = new Uint8Array(W*H);
+  for(let row=0; row<H; row++){
+    const lat = n - ((row+0.5)/H)*(n-s);
+    for(let col=0; col<W; col++){
+      const lon = w + ((col+0.5)/W)*(e-w);
+      const k = row*W+col;
+      if(!turf.booleanPointInPolygon(turf.point([lon,lat]), hull)){ val[k]=-1; continue; }
+      inside[k]=1;
+      let nu=0, de=0, exact=null;
+      for(const sp of samples){
+        const dx=lon-sp.x, dy=lat-sp.y, d2=dx*dx+dy*dy;
+        if(d2<1e-14){ exact=sp.v; break; }
+        const wgt = 1/Math.pow(d2, pow/2);
+        nu += wgt*sp.v; de += wgt;
+      }
+      val[k] = exact!==null ? exact : nu/de;
+    }
+  }
+  // pass 2: colour each inside pixel from log-ratio; mark threshold-crossing pixels for the contour
+  const cv = document.createElement('canvas'); cv.width=W; cv.height=H;
+  const ctx = cv.getContext('2d'); const img = ctx.createImageData(W,H);
+  for(let row=0; row<H; row++){
+    for(let col=0; col<W; col++){
+      const k = row*W+col, idx = k*4;
+      if(!inside[k]){ img.data[idx+3]=0; continue; }
+      const v = val[k];
+      let t;
+      if(useLog){
+        const r = Math.log10(Math.max(v,1e-6)/thr);                  // log ratio to ROD
+        t = (r + HEAT_LOG_SPAN) / (2*HEAT_LOG_SPAN);                 // 0..1 with t=0.5 at ROD
+      } else {
+        t = (v/thr) * 0.5;                                           // linear: t=0.5 at ROD, 1 at 2×ROD
+      }
+      const rgb = paletteColor(t);
+      img.data[idx]=rgb[0]; img.data[idx+1]=rgb[1]; img.data[idx+2]=rgb[2]; img.data[idx+3]=255;
+      // contour: this pixel is on the boundary if any 4-neighbor crosses the ROD line
+      if(showContour){
+        const cur = v >= thr;
+        const nb = [k-1, k+1, k-W, k+W];
+        for(const j of nb){
+          if(j<0 || j>=W*H) continue;
+          if(!inside[j]) continue;
+          if((val[j] >= thr) !== cur){ img.data[idx]=12; img.data[idx+1]=12; img.data[idx+2]=12; break; }
+        }
+      }
+    }
+  }
+  ctx.putImageData(img,0,0);
+  return { url:cv.toDataURL(), bounds:[[s,w],[n,e]] };
 }
 function updateHeat(){
-  if(!STATE.layers.heat){ if(heatLayer){ map.removeLayer(heatLayer); heatLayer=null; } return; }
-  const opts = { radius:+$('heatRadius').value, blur:+$('heatBlur').value, max:+$('heatMax').value, minOpacity:0.05, gradient:HEAT_GRADIENT };
-  if(!heatLayer){ heatLayer = L.heatLayer(heatPoints(), opts).addTo(map); }
-  else { heatLayer.setLatLngs(heatPoints()); heatLayer.setOptions(opts); }
-  if(heatLayer._canvas) heatLayer._canvas.style.opacity = $('heatOp').value;
+  if(heatOverlay){ map.removeLayer(heatOverlay); heatOverlay=null; }
+  if(!STATE.layers.heat) return;
+  const r = buildHeatSurface(); if(!r) return;
+  heatOverlay = L.imageOverlay(r.url, r.bounds, { opacity:+$('heatOp').value, interactive:false }).addTo(map);
 }
 
 /* =========================================================================
@@ -1162,27 +1344,32 @@ $('clearDraw').addEventListener('click', ()=>{ drawnItems.clearLayers(); $('meas
 $('digDepth').addEventListener('change', ()=>{ drawnItems.eachLayer(l=>attachShapeInfo(l)); });
 
 /* =========================================================================
-   SECTION 12 — OM vs SHALLOW Hg SCATTER (Chart.js)
+   SECTION 12 — OM vs SHALLOW / DEEP Hg SCATTERS (Chart.js)
    ========================================================================= */
-let omChart=null, omBuilt=false;
-function buildOmChart(){
-  const r2 = DATA.features.filter(f=>f.properties.round===2 && isNum(f.properties.Hg_OM) && isNum(f.properties.Hg));
-  if(!r2.length) return;
-  const colByEff = {'OM higher':'#d7191c','OM lower':'#2c7bb6','~equal':'#9e9e9e'};
+let omChart=null, omDeepChart=null, omBuilt=false;
+const OM_COLOR = {'OM higher':'#d7191c','OM lower':'#2c7bb6','~equal':'#9e9e9e'};
+function omScatter(canvasId, xField, xLabel, currentChart){
+  const r2 = DATA.features.filter(f=>f.properties.round===2 && isNum(f.properties.Hg_OM) && isNum(f.properties[xField]));
+  if(!r2.length){ const el=$(canvasId); if(el) el.style.display='none'; return null; }
   const groups={};
-  r2.forEach(f=>{ const k=f.properties.OM_effect||'?'; (groups[k]=groups[k]||[]).push({x:f.properties.Hg,y:f.properties.Hg_OM,id:f.properties.id}); });
-  const ds = Object.keys(groups).map(k=>({ label:k, data:groups[k], backgroundColor:colByEff[k]||'#666', pointRadius:4 }));
-  const maxV = Math.max(...r2.map(f=>Math.max(f.properties.Hg,f.properties.Hg_OM)));
+  r2.forEach(f=>{ const k=f.properties.OM_effect||'?'; (groups[k]=groups[k]||[]).push({x:f.properties[xField], y:f.properties.Hg_OM, id:f.properties.id}); });
+  const ds = Object.keys(groups).map(k=>({ label:k, data:groups[k], backgroundColor:OM_COLOR[k]||'#666', pointRadius:4 }));
+  const maxV = Math.max(...r2.map(f=>Math.max(f.properties[xField], f.properties.Hg_OM)));
   ds.push({ label:'1:1', type:'line', data:[{x:1,y:1},{x:maxV,y:maxV}], borderColor:'#222', borderDash:[5,4], pointRadius:0, fill:false });
-  if(omChart) omChart.destroy();
-  omChart = new Chart($('omChart'), { type:'scatter', data:{datasets:ds}, options:{
+  ds.push({ label:'ROD '+CRITERIA.ROD.Hg, type:'line', data:[{x:1,y:CRITERIA.ROD.Hg},{x:maxV,y:CRITERIA.ROD.Hg}], borderColor:'#d7191c', borderDash:[3,3], pointRadius:0, fill:false });
+  if(currentChart) currentChart.destroy();
+  return new Chart($(canvasId), { type:'scatter', data:{datasets:ds}, options:{
     responsive:true, animation:false,
-    scales:{ x:{type:'logarithmic',title:{display:true,text:'Shallow soil Hg (mg/kg)'}},
+    scales:{ x:{type:'logarithmic',title:{display:true,text:xLabel}},
              y:{type:'logarithmic',title:{display:true,text:'OM Hg (mg/kg)'}} },
     plugins:{ legend:{labels:{boxWidth:12,font:{size:10}}},
-      tooltip:{callbacks:{label:c=>c.raw && c.raw.id ? `${c.raw.id}: soil ${c.raw.x}, OM ${c.raw.y}` : ''}} }
+      tooltip:{callbacks:{label:c=>c.raw && c.raw.id ? `${c.raw.id}: ${c.raw.x}, OM ${c.raw.y}` : ''}} }
   }});
-  omBuilt=true;
+}
+function buildOmChart(){
+  omChart     = omScatter('omChart',     'Hg',      'Shallow soil Hg (mg/kg)', omChart);
+  omDeepChart = omScatter('omDeepChart', 'Hg_deep', 'Deep soil Hg (mg/kg)',    omDeepChart);
+  omBuilt = true;
 }
 
 /* =========================================================================
@@ -1369,11 +1556,14 @@ $('toggleHeat').addEventListener('change', e=>{ STATE.layers.heat=e.target.check
 $('toggleIDW').addEventListener('change', e=>{ STATE.layers.idw=e.target.checked; $('idwCtl').style.display=e.target.checked?'':'none'; updateIDW(); scheduleAutosave(); });
 $('toggleGrid').addEventListener('change', e=>{ STATE.layers.grid=e.target.checked; $('gridCtl').style.display=e.target.checked?'':'none'; updateGrid(); scheduleAutosave(); });
 // heat controls
-['heatRadius','heatBlur','heatMax','heatOp'].forEach(id=>$(id).addEventListener('input', e=>{
-  const v=$(id+'V'); if(v) v.textContent=e.target.value; updateHeat();
+['heatRes','heatPow','heatOp'].forEach(id=>$(id).addEventListener('input', e=>{
+  const v=$(id+'V'); if(v) v.textContent=e.target.value;
+  if(id==='heatOp' && heatOverlay) heatOverlay.setOpacity(+e.target.value);
+  else updateHeat();
 }));
 $('heatAnalyte').addEventListener('change', ()=>{ updateHeat(); buildLegend(); });
 $('heatLog').addEventListener('change', updateHeat);
+$('heatContour').addEventListener('change', updateHeat);
 // idw controls
 ['idwRes','idwPow','idwOp'].forEach(id=>$(id).addEventListener('input', e=>{ const v=$(id+'V'); if(v) v.textContent=e.target.value; }));
 $('idwOp').addEventListener('input', updateIDW);
