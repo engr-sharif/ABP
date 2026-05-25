@@ -183,17 +183,6 @@ body:not(.with-panel) #coords{left:0}
 
 .swatch-mini{width:11px;height:11px;display:inline-block;border-radius:2px;border:1px solid rgba(0,0,0,.3);vertical-align:-1px}
 
-/* swipe divider (native ROD<->PMB split) */
-#swipeDivider{position:absolute;top:0;bottom:0;width:0;border-left:3px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.5);
-  z-index:900;cursor:ew-resize;display:none}
-#swipeDivider.on{display:block}
-#swipeDivider .grip{position:absolute;top:50%;left:-15px;width:30px;height:30px;margin-top:-15px;border-radius:50%;
-  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;
-  font-size:13px;color:#444}
-#swipeDivider .tagL,#swipeDivider .tagR{position:absolute;top:8px;font-size:11px;font-weight:700;color:#fff;
-  background:rgba(0,0,0,.55);padding:2px 6px;border-radius:3px;white-space:nowrap}
-#swipeDivider .tagL{right:6px}#swipeDivider .tagR{left:6px}
-
 /* ============================== PRINT LAYOUT (figure templates) ============================== */
 @media print{
   #topbar,#panel,#panelToggle,#coords,
@@ -238,9 +227,8 @@ body:not(.with-panel) #coords{left:0}
       <label class="field">Color points by</label>
       <select id="colorBy">
         <option value="rod">ROD exceedance</option>
-        <option value="pmb">PMB exceedance</option>
         <option value="conc">Analyte concentration</option>
-        <option value="ratio">Ratio to threshold (×)</option>
+        <option value="ratio">Ratio to ROD (×)</option>
         <option value="round">Round</option>
         <option value="driver">Driving COC</option>
       </select>
@@ -253,16 +241,6 @@ body:not(.with-panel) #coords{left:0}
           <option value="Sb">Antimony (Sb)</option>
           <option value="Tl">Thallium (Tl)</option>
         </select>
-      </div>
-
-      <div id="criterionWrap">
-        <label class="field">Threshold set</label>
-        <div class="row">
-          <select id="criterion">
-            <option value="ROD">ROD remediation goal</option>
-            <option value="PMB">PMB / background</option>
-          </select>
-        </div>
       </div>
 
       <label class="checkrow"><input type="checkbox" id="showLabels"> Show ID labels</label>
@@ -290,7 +268,7 @@ body:not(.with-panel) #coords{left:0}
         <label class="field">Opacity <span id="heatOpV">0.75</span></label>
         <input type="range" id="heatOp" min="0.1" max="1" step="0.05" value="0.75">
         <label class="checkrow"><input type="checkbox" id="heatLog" checked> Log-weight (Hg)</label>
-        <p class="hint" style="margin:4px 0 0"><b>Blue</b> = below the goal, <b>red</b> = exceeding it. The goal follows your <b>Color points by</b> choice (ROD or PMB), else the <b>Threshold set</b> — switching it rebakes the surface.</p>
+        <p class="hint" style="margin:4px 0 0">Below ROD = cool, above ROD = warm, with a hard contour at the threshold. Pivot is on the ROD remediation goal for the chosen analyte.</p>
       </div>
       <label class="checkrow"><input type="checkbox" id="toggleIDW"> IDW surface (clipped to hull)</label>
       <div id="idwCtl" style="display:none;padding-left:6px;border-left:2px solid var(--line)">
@@ -319,8 +297,6 @@ body:not(.with-panel) #coords{left:0}
     <h2>Advanced (SOTA) <span class="chev">▾</span></h2>
     <div class="body">
       <label class="checkrow"><input type="checkbox" id="toggleCluster"> Marker clustering</label>
-      <label class="checkrow"><input type="checkbox" id="toggleSwipe"> Split-screen swipe: ROD ↔ PMB</label>
-      <p class="hint" id="swipeHint" style="display:none">Left of the handle = ROD coloring · right = PMB coloring.</p>
 
       <label class="field">Dataset time-slider</label>
       <div class="row">
@@ -332,16 +308,12 @@ body:not(.with-panel) #coords{left:0}
       <hr style="border:none;border-top:1px solid var(--line);margin:9px 0">
       <label class="field">Auto-delineate contamination extent</label>
       <p class="hint">Contours the interpolated surface at the active threshold, then clips the boundary to within the coverage radius of an exceeding sample so it never encloses empty ground. Drag the vertices to refine.</p>
-      <div class="row">
-        <select id="delinAnalyte" style="flex:2">
-          <option value="Hg">Hg</option><option value="As">As</option><option value="Sb">Sb</option><option value="Tl">Tl</option>
-        </select>
-        <select id="delinCrit" style="flex:2">
-          <option value="ROD">ROD</option><option value="PMB">PMB</option>
-        </select>
-      </div>
-      <label class="field">Coverage radius: <span id="delinRadV">40</span> m (<span id="delinRadFt">131</span> ft)</label>
-      <input type="range" id="delinRad" min="10" max="150" value="40" step="5">
+      <label class="field">Analyte (clipped to ROD)</label>
+      <select id="delinAnalyte">
+        <option value="Hg">Hg</option><option value="As">As</option><option value="Sb">Sb</option><option value="Tl">Tl</option>
+      </select>
+      <label class="field">Coverage radius (ft)</label>
+      <input type="number" id="delinRadFt" value="20" min="1" step="1">
       <label class="field">Excavation depth for volume (ft)</label>
       <input type="number" id="delinDepth" value="2" min="0" step="0.25">
       <div class="row" style="margin-top:4px">
@@ -374,7 +346,6 @@ body:not(.with-panel) #coords{left:0}
           <option value="loc">Site / Sample Locations</option>
           <option value="hg">Hg Results (ROD)</option>
           <option value="as">As Results (ROD)</option>
-          <option value="pmb">PMB Exceedances</option>
         </select>
         <button class="btn" id="printBtn" style="flex:none">Print</button>
       </div>
@@ -419,8 +390,7 @@ body:not(.with-panel) #coords{left:0}
       <select id="fExceed">
         <option value="all">All</option>
         <option value="rod">ROD exceedances only</option>
-        <option value="pmb">PMB exceedances only</option>
-        <option value="clean">Clean (passes both)</option>
+        <option value="clean">Below ROD</option>
       </select>
       <label class="field">Depth</label>
       <select id="fDepth"><option value="all">All</option><option value="surface">Surface only</option><option value="deep">Has deep</option></select>
@@ -508,8 +478,6 @@ body:not(.with-panel) #coords{left:0}
   </div>
 </div>
 
-<div id="swipeDivider"><div class="grip">⇔</div><div class="tagL">ROD</div><div class="tagR">PMB</div></div>
-
 <div id="coords">—</div>
 
 <div id="watermark">Mo Sharif · Jacobs 2026</div>
@@ -537,7 +505,7 @@ DATA.features.forEach(f => { f.properties.dataset = String(f.properties.round); 
 EA_DATA.features.forEach(f => { f.properties.dataset = 'EA'; });
 DATA.features = DATA.features.concat(EA_DATA.features);
 
-const CRITERIA = DATA.metadata.criteria;          // { ROD:{Hg,As,Sb,Tl}, PMB:{...} }
+const CRITERIA = DATA.metadata.criteria;          // ROD:{Hg,As,Sb,Tl}  (PMB present in data but unused)
 const ANALYTES = ['Hg','As','Sb','Tl'];
 const ANALYTE_LABEL = {Hg:'Mercury (Hg)',As:'Arsenic (As)',Sb:'Antimony (Sb)',Tl:'Thallium (Tl)'};
 const UNITS = DATA.metadata.units || 'mg/kg';
@@ -665,17 +633,16 @@ function normConc(v, an){
   }
   return (v-lo)/(hi-lo);
 }
-// ratio to active threshold; >1 = exceedance
+// ratio to ROD remediation goal; >1 = exceedance
 function ratioToThreshold(v, an){
-  const thr = CRITERIA[STATE.criterion][an];
+  const thr = CRITERIA.ROD[an];
   if(!isNum(v) || !isNum(thr) || thr<=0) return null;
   return v/thr;
 }
 
-// driver classification for "Driving COC" mode
+// driver classification for "Driving COC" mode (ROD only)
 function driverColor(p){
-  const ex = STATE.criterion==='ROD' ? p.rod_exceed : p.pmb_exceed;
-  const dr = STATE.criterion==='ROD' ? p.rod_drivers : p.pmb_drivers;
+  const ex = p.rod_exceed, dr = p.rod_drivers;
   if(ex==='NOT SAMPLED' || !p.sampled) return SEM.ns;
   if(ex!=='YES' || !dr) return '#1a9641';                  // passes -> green
   const hasHg = /Hg/.test(dr), hasAs = /As/.test(dr);
@@ -686,12 +653,10 @@ function driverColor(p){
 }
 
 // MASTER: fill color for a feature under the active color-by mode
-// `mode` overrides STATE.colorBy (used by the ROD↔PMB swipe panes)
 function fillFor(p, mode){
   if(!p.sampled) return null;                  // hollow handled by renderer
   switch(mode || STATE.colorBy){
     case 'rod': return p.rod_exceed==='YES'?SEM.yes : p.rod_exceed==='NO'?SEM.no : SEM.ns;
-    case 'pmb': return p.pmb_exceed==='YES'?SEM.yes : p.pmb_exceed==='NO'?SEM.no : SEM.ns;
     case 'round': return DATASET_COLOR[p.dataset] || (p.round===1 ? '#2b8cbe' : '#e6550d');
     case 'driver': return driverColor(p);
     case 'conc': {
@@ -752,7 +717,6 @@ function popupHtml(p){
     ...ANALYTES.map(a=>`${a}: ${fmt(p[a])}${isNum(p[a+'_deep'])?` / deep ${fmt(p[a+'_deep'])}`:''} ${UNITS}`),
     isNum(p.Hg_OM)?`Hg(OM): ${fmt(p.Hg_OM)} (${p.OM_effect||''})`:'',
     `ROD: ${p.rod_exceed}${p.rod_drivers?` [${p.rod_drivers}]`:''}`,
-    `PMB: ${p.pmb_exceed||'—'}${p.pmb_drivers?` [${p.pmb_drivers}]`:''}`,
     p.depth?`Depth: ${p.depth}`:'',
     p.field_note?`Field note: ${p.field_note}`:'',
     p.notes?`Notes: ${p.notes}`:'',
@@ -766,7 +730,6 @@ function popupHtml(p){
       ${p.depth?`<tr><td class="k">Depth</td><td>${p.depth}</td></tr>`:''}
       ${rows}${omRow}
       <tr><td class="k">ROD</td><td>${ex(p.rod_exceed)}${p.rod_drivers?` <span style="color:#888">[${p.rod_drivers}]</span>`:''}</td></tr>
-      <tr><td class="k">PMB</td><td>${ex(p.pmb_exceed)}${p.pmb_drivers?` <span style="color:#888">[${p.pmb_drivers}]</span>`:''}</td></tr>
       ${p.has_fd==='Yes'?'<tr><td class="k">Field dup</td><td>Yes</td></tr>':''}
       ${p.field_note?`<tr><td class="k">Field note</td><td>${p.field_note}</td></tr>`:''}
       ${p.notes?`<tr><td class="k">Notes</td><td>${p.notes}</td></tr>`:''}
@@ -783,8 +746,7 @@ function passesFilter(p){
   if(f.sampled==='yes' && !p.sampled) return false;
   if(f.sampled==='no'  &&  p.sampled) return false;
   if(f.exceed==='rod'  && p.rod_exceed!=='YES') return false;
-  if(f.exceed==='pmb'  && p.pmb_exceed!=='YES') return false;
-  if(f.exceed==='clean'&& !(p.rod_exceed==='NO' && p.pmb_exceed==='NO')) return false;
+  if(f.exceed==='clean'&& p.rod_exceed!=='NO') return false;
   if(f.depth==='surface' && hasDeep(p)) return false;
   if(f.depth==='deep'    && !hasDeep(p)) return false;
   if(f.thr>0){ const v=num(p[STATE.analyte]); if(v===null || v<=f.thr) return false; }
@@ -804,11 +766,10 @@ function makeMarker(p, lon, lat, opts){
   return m;
 }
 
-// dispatcher: render points in the active mode (normal | cluster | swipe — SOTA)
+// dispatcher: render points in the active mode (normal | cluster)
 function buildMarkers(){
   sampleLayer.clearLayers();
   for(const k in markerById) delete markerById[k];
-  if(window.STATE_pointMode === 'swipe'){ buildSwipe(); return; }
   if(window.STATE_pointMode === 'cluster'){ buildCluster(); return; }
   if(!STATE.showPoints) return;
   DATA.features.forEach(f=>{
@@ -837,13 +798,12 @@ function swatch(c){ return `<span class="legend-swatch" style="background:${c}">
 
 function buildLegend(){
   const body = document.getElementById('legendBody');
-  const an = STATE.analyte, crit = STATE.criterion;
+  const an = STATE.analyte, crit = 'ROD';
   let html = '';
-  if(STATE.colorBy==='rod' || STATE.colorBy==='pmb'){
-    const set = STATE.colorBy==='rod' ? 'ROD' : 'PMB';
-    html = `<div style="font-weight:600;margin-bottom:4px">${set} exceedance</div>
-      <div class="legend-row">${swatch(SEM.yes)} Exceeds ${set}</div>
-      <div class="legend-row">${swatch(SEM.no)} Below ${set}</div>
+  if(STATE.colorBy==='rod'){
+    html = `<div style="font-weight:600;margin-bottom:4px">ROD exceedance</div>
+      <div class="legend-row">${swatch(SEM.yes)} Exceeds ROD</div>
+      <div class="legend-row">${swatch(SEM.no)} Below ROD</div>
       <div class="legend-row">${swatch(SEM.ns)} Not sampled</div>`;
   } else if(STATE.colorBy==='round'){
     html = `<div style="font-weight:600;margin-bottom:4px">Sampling dataset</div>
@@ -889,9 +849,7 @@ function buildLegend(){
    ========================================================================= */
 function syncControlVisibility(){
   const needAnalyte = ['conc','ratio'].includes(STATE.colorBy);
-  const needCrit = ['ratio','driver'].includes(STATE.colorBy);
   document.getElementById('analyteWrap').style.display = needAnalyte ? '' : 'none';
-  document.getElementById('criterionWrap').style.display = needCrit ? '' : 'none';
 }
 function applyDisplay(){
   syncControlVisibility();
@@ -901,7 +859,6 @@ function applyDisplay(){
 
 document.getElementById('colorBy').addEventListener('change', e=>{ STATE.colorBy=e.target.value; applyDisplay(); });
 document.getElementById('analyte').addEventListener('change', e=>{ STATE.analyte=e.target.value; applyDisplay(); });
-document.getElementById('criterion').addEventListener('change', e=>{ STATE.criterion=e.target.value; applyDisplay(); });
 document.getElementById('showLabels').addEventListener('change', e=>{ STATE.showLabels=e.target.checked; refreshMarkers(); });
 document.getElementById('logScale').addEventListener('change', e=>{ STATE.logScale=e.target.checked; applyDisplay(); });
 
@@ -949,14 +906,13 @@ function updateThrSlider(){
 function computeStats(feats){
   const sampled = feats.filter(f=>f.properties.sampled);
   const st = { n:feats.length, nSampled:sampled.length,
-    rod: feats.filter(f=>f.properties.rod_exceed==='YES').length,
-    pmb: feats.filter(f=>f.properties.pmb_exceed==='YES').length, perA:{} };
+    rod: feats.filter(f=>f.properties.rod_exceed==='YES').length, perA:{} };
   ANALYTES.forEach(an=>{
     const vals = sampled.map(f=>num(f.properties[an])).filter(v=>v!==null).sort((a,b)=>a-b);
     if(!vals.length){ st.perA[an]=null; return; }
     const sum = vals.reduce((a,b)=>a+b,0);
     const med = vals.length%2 ? vals[(vals.length-1)/2] : (vals[vals.length/2-1]+vals[vals.length/2])/2;
-    const thr = CRITERIA[STATE.criterion][an];
+    const thr = CRITERIA.ROD[an];
     const exc = vals.filter(v=>v>thr).length;
     st.perA[an] = { min:vals[0], mean:sum/vals.length, median:med, max:vals[vals.length-1], pctExc:100*exc/vals.length };
   });
@@ -966,9 +922,8 @@ function renderStats(){
   const st = computeStats(filteredFeatures());
   let h = `<div class="statline"><span>Showing</span><b>${st.n}</b></div>
     <div class="statline"><span>Sampled</span><b>${st.nSampled}</b></div>
-    <div class="statline"><span>ROD exceedances</span><b style="color:var(--red)">${st.rod}</b></div>
-    <div class="statline"><span>PMB exceedances</span><b style="color:var(--red)">${st.pmb}</b></div>`;
-  h += `<table class="stats-table"><tr><th>${UNITS}</th><th>min</th><th>mean</th><th>med</th><th>max</th><th>%&gt;${STATE.criterion}</th></tr>`;
+    <div class="statline"><span>ROD exceedances</span><b style="color:var(--red)">${st.rod}</b></div>`;
+  h += `<table class="stats-table"><tr><th>${UNITS}</th><th>min</th><th>mean</th><th>med</th><th>max</th><th>%&gt;ROD</th></tr>`;
   ANALYTES.forEach(an=>{
     const a = st.perA[an];
     h += a ? `<tr><td class="an">${an}</td><td>${a.min}</td><td>${a.mean.toFixed(1)}</td><td>${a.median}</td><td>${a.max}</td><td>${a.pctExc.toFixed(0)}%</td></tr>`
@@ -989,9 +944,8 @@ let heatLayer = null;
 const HEAT_LOG_SPAN = 1.5;        // decades above/below the goal that reach full red/blue (log mode)
 // Diverging palette: BELOW the goal -> blue, AT the goal -> pale, ABOVE the goal -> red.
 const HEAT_GRADIENT = {0.0:'#2c7bb6',0.2:'#5ba3d0',0.4:'#a6d0e6',0.5:'#ffffbf',0.6:'#fdae61',0.8:'#ef6b46',1.0:'#d7191c'};
-// Which remediation goal the heat answers to: if points are coloured by ROD or
-// PMB, the heat uses that same goal; otherwise it follows the Threshold set.
-function heatGoal(){ return STATE.colorBy==='rod' ? 'ROD' : STATE.colorBy==='pmb' ? 'PMB' : STATE.criterion; }
+// Heat map is always pivoted on the ROD remediation goal.
+function heatGoal(){ return 'ROD'; }
 function heatPoints(){
   const an = $('heatAnalyte').value;
   const useLog = $('heatLog').checked;
@@ -1242,7 +1196,7 @@ function download(name, content, mime){
 }
 function expFileName(def){ return ($('expName').value||def).trim().replace(/[^\w.-]+/g,'_'); }
 function exportIgnore(n){
-  if(['panel','panelToggle','topbar','coords','swipeDivider'].includes(n.id)) return true;
+  if(['panel','panelToggle','topbar','coords'].includes(n.id)) return true;
   const cl = n.classList;
   if(cl && (cl.contains('leaflet-control-zoom')||cl.contains('leaflet-pm-toolbar')||cl.contains('leaflet-pm-toolbar-vertical'))) return true;
   const inc = [...document.querySelectorAll('.expInc:checked')].map(c=>c.value);
@@ -1304,9 +1258,9 @@ function exportDataGeojson(){
 }
 function exportStats(){
   const st=computeStats(filteredFeatures());
-  const rows=[['metric','value'],['showing',st.n],['sampled',st.nSampled],['ROD_exceedances',st.rod],['PMB_exceedances',st.pmb]];
+  const rows=[['metric','value'],['showing',st.n],['sampled',st.nSampled],['ROD_exceedances',st.rod]];
   ANALYTES.forEach(an=>{ const a=st.perA[an]; if(a){
-    rows.push([an+'_min',a.min],[an+'_mean',a.mean.toFixed(2)],[an+'_median',a.median],[an+'_max',a.max],[an+'_pct_over_'+STATE.criterion,a.pctExc.toFixed(1)]);
+    rows.push([an+'_min',a.min],[an+'_mean',a.mean.toFixed(2)],[an+'_median',a.median],[an+'_max',a.max],[an+'_pct_over_ROD',a.pctExc.toFixed(1)]);
   }});
   download(expFileName('ABP_stats')+'.csv', rows.map(r=>r.join(',')).join('\n'), 'text/csv');
 }
@@ -1317,7 +1271,7 @@ function exportShapes(){
 }
 function exportCsv(){
   const feats = filteredFeatures();
-  const cols = ['id','dataset','source','round','sampled','lat','lon','Hg','As','Sb','Tl','Hg_deep','As_deep','Sb_deep','Tl_deep','Hg_OM','OM_effect','depth','coord_source','rod_exceed','rod_drivers','pmb_exceed','pmb_drivers'];
+  const cols = ['id','dataset','source','round','sampled','lat','lon','Hg','As','Sb','Tl','Hg_deep','As_deep','Sb_deep','Tl_deep','Hg_OM','OM_effect','depth','coord_source','rod_exceed','rod_drivers'];
   const esc = v => v==null ? '' : /[",\n]/.test(String(v)) ? '"'+String(v).replace(/"/g,'""')+'"' : String(v);
   const rows = [cols.join(',')];
   feats.forEach(f=>{ const p=f.properties; const o={...p, lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0]};
@@ -1354,7 +1308,7 @@ function scheduleAutosave(){
 }
 function sessionData(){
   return {
-    colorBy:STATE.colorBy, analyte:STATE.analyte, criterion:STATE.criterion,
+    colorBy:STATE.colorBy, analyte:STATE.analyte,
     showLabels:STATE.showLabels, logScale:STATE.logScale, showPoints:STATE.showPoints,
     filters:STATE.filters, layers:STATE.layers,
     base:$('baseSelect').value,
@@ -1378,7 +1332,6 @@ function loadSession(silent){
   const set=(id,v)=>{ const el=$(id); if(el!=null && v!=null){ if(el.type==='checkbox') el.checked=v; else el.value=v; } };
   STATE.colorBy=d.colorBy||STATE.colorBy; set('colorBy',STATE.colorBy);
   STATE.analyte=d.analyte||STATE.analyte; set('analyte',STATE.analyte);
-  STATE.criterion=d.criterion||STATE.criterion; set('criterion',STATE.criterion);
   STATE.showLabels=!!d.showLabels; set('showLabels',STATE.showLabels);
   STATE.logScale=d.logScale!==false; set('logScale',STATE.logScale);
   STATE.showPoints=d.showPoints!==false; set('togglePoints',STATE.showPoints);
@@ -1479,8 +1432,8 @@ document.querySelectorAll('.tb-title,.tb-sub').forEach(el=>el.addEventListener('
 })();
 function autoTitle(){
   const an=ANALYTE_LABEL[STATE.analyte]||STATE.analyte;
-  const modeTxt={rod:'ROD exceedance',pmb:'PMB exceedance',conc:an+' concentration',
-    ratio:an+' ratio to '+STATE.criterion,round:'sampling dataset',driver:'driving COC'}[STATE.colorBy]||STATE.colorBy;
+  const modeTxt={rod:'ROD exceedance',conc:an+' concentration',
+    ratio:an+' ratio to ROD',round:'sampling dataset',driver:'driving COC'}[STATE.colorBy]||STATE.colorBy;
   const ds=STATE.filters.datasets||[];
   const dsTxt = ds.length>=3 ? 'Rounds 1 & 2 + EA Historical'
     : ds.map(d=>({'1':'Round 1','2':'Round 2','EA':'EA Historical'}[d])).join(' + ') || 'no datasets';
@@ -1517,14 +1470,10 @@ applyDisplay = function(){
 };
 
 /* =========================================================================
-   SECTION 16 — SOTA: clustering, ROD↔PMB swipe, time-slider,
+   SECTION 16 — SOTA: clustering, time-slider,
    auto-delineation, cross-section profile, figure templates/print
    ========================================================================= */
 window.STATE_pointMode = 'normal';
-
-// dedicated panes so the side-by-side control can clip each side
-map.createPane('paneL'); map.getPane('paneL').style.zIndex = 460;
-map.createPane('paneR'); map.getPane('paneR').style.zIndex = 460;
 
 // ---- marker clustering ----
 let clusterGroup = null;
@@ -1541,70 +1490,14 @@ function buildCluster(){
   map.addLayer(clusterGroup);
 }
 
-// ---- ROD ↔ PMB swipe (native pane-clipping divider) ----
-let swipeLeft=null, swipeRight=null, swipeX=null;
-function clipSwipePanes(){
-  if(window.STATE_pointMode!=='swipe') return;
-  const size=map.getSize();
-  if(swipeX===null) swipeX=size.x/2;
-  swipeX=Math.max(0,Math.min(size.x,swipeX));
-  const nw=map.containerPointToLayerPoint([0,0]);
-  const se=map.containerPointToLayerPoint([size.x,size.y]);
-  const clipX=nw.x+swipeX;
-  map.getPane('paneL').style.clip = `rect(${nw.y}px,${clipX}px,${se.y}px,${nw.x}px)`;
-  map.getPane('paneR').style.clip = `rect(${nw.y}px,${se.x}px,${se.y}px,${clipX}px)`;
-  const dv=$('swipeDivider'); dv.style.left=swipeX+'px';
-}
-function clearSwipe(){
-  map.off('move zoom zoomend resize moveend', clipSwipePanes);
-  if(swipeLeft){ map.removeLayer(swipeLeft); swipeLeft=null; }
-  if(swipeRight){ map.removeLayer(swipeRight); swipeRight=null; }
-  const pl=map.getPane('paneL'), pr=map.getPane('paneR');
-  if(pl) pl.style.clip=''; if(pr) pr.style.clip='';
-  $('swipeDivider').classList.remove('on');
-}
-function buildSwipe(){
-  clearSwipe();
-  swipeLeft=L.layerGroup(); swipeRight=L.layerGroup();
-  DATA.features.forEach(f=>{
-    const p=f.properties; if(!passesFilter(p)) return;
-    const [lon,lat]=f.geometry.coordinates;
-    makeMarker(p,lon,lat,{mode:'rod',pane:'paneL',noLabel:true}).addTo(swipeLeft);
-    makeMarker(p,lon,lat,{mode:'pmb',pane:'paneR',noLabel:true}).addTo(swipeRight);
-  });
-  swipeLeft.addTo(map); swipeRight.addTo(map);
-  swipeX = map.getSize().x/2;
-  $('swipeDivider').classList.add('on');
-  map.on('move zoom zoomend resize moveend', clipSwipePanes);
-  clipSwipePanes();
-}
-// divider drag
-(function(){
-  const dv=$('swipeDivider'); let dragging=false;
-  const startDrag=()=>{ dragging=true; map.dragging.disable(); document.body.style.cursor='ew-resize'; };
-  const endDrag=()=>{ dragging=false; map.dragging.enable(); document.body.style.cursor=''; };
-  const moveDrag=e=>{ if(!dragging) return; const r=$('map').getBoundingClientRect();
-    const cx=(e.touches?e.touches[0].clientX:e.clientX); swipeX=cx-r.left; clipSwipePanes(); };
-  dv.addEventListener('mousedown', startDrag); dv.addEventListener('touchstart', startDrag,{passive:true});
-  window.addEventListener('mouseup', endDrag); window.addEventListener('touchend', endDrag);
-  window.addEventListener('mousemove', moveDrag); window.addEventListener('touchmove', moveDrag,{passive:true});
-})();
-
 function setPointMode(mode){
-  clearCluster(); clearSwipe(); sampleLayer.clearLayers();
+  clearCluster(); sampleLayer.clearLayers();
   window.STATE_pointMode = mode;
   buildMarkers();
   buildLegend();
 }
 $('toggleCluster').addEventListener('change', e=>{
-  if(e.target.checked){ $('toggleSwipe').checked=false; $('swipeHint').style.display='none'; setPointMode('cluster'); }
-  else setPointMode('normal');
-  scheduleAutosave();
-});
-$('toggleSwipe').addEventListener('change', e=>{
-  $('swipeHint').style.display = e.target.checked ? '' : 'none';
-  if(e.target.checked){ $('toggleCluster').checked=false; setPointMode('swipe'); }
-  else setPointMode('normal');
+  setPointMode(e.target.checked ? 'cluster' : 'normal');
   scheduleAutosave();
 });
 
@@ -1664,8 +1557,9 @@ function attachDelinLive(l){
        ()=>{ upd(); scheduleAutosave(); });
 }
 function autoDelineate(){
-  const an=$('delinAnalyte').value, crit=$('delinCrit').value, thr=CRITERIA[crit][an];
-  const radM=+$('delinRad').value, smooth=$('delinSmooth').checked;
+  const an=$('delinAnalyte').value, crit='ROD', thr=CRITERIA.ROD[an];
+  const radM=(+$('delinRadFt').value||1) * 0.3048;
+  const smooth=$('delinSmooth').checked;
   const sampled = DATA.features.filter(f=>f.properties.sampled && num(f.properties[an])!==null);
   if(sampled.length<3){ $('delinMsg').textContent='Not enough sampled data for '+an+'.'; return; }
   const exceed = sampled.filter(f=>num(f.properties[an])>=thr);
@@ -1713,7 +1607,7 @@ function autoDelineate(){
     drawnItems.addLayer(dot); delinLayers.push(dot);
   });
   if(added) delinSummary();
-  else $('delinMsg').innerHTML = `No mapped exceedance area within ${radM} m of an exceeding sample.`;
+  else $('delinMsg').innerHTML = `No mapped exceedance area within ${$('delinRadFt').value} ft of an exceeding sample.`;
   scheduleAutosave();
 }
 $('delinRun').addEventListener('click', autoDelineate);
@@ -1723,10 +1617,6 @@ $('delinEdit').addEventListener('click', ()=>{
   const editing = delinLayers.some(l=>l.pm && l.pm.enabled());
   delinLayers.forEach(l=>{ if(l.pm){ editing ? l.pm.disable() : l.pm.enable({allowSelfIntersection:false}); } });
   $('delinEdit').textContent = editing ? 'Edit' : 'Done';
-});
-$('delinRad').addEventListener('input', e=>{
-  $('delinRadV').textContent=e.target.value;
-  $('delinRadFt').textContent=Math.round(e.target.value*3.28084);
 });
 // changing the depth re-computes volume immediately (panel + any open popup)
 $('delinDepth').addEventListener('input', ()=>{
@@ -1777,7 +1667,6 @@ $('figTemplate').addEventListener('change', e=>{
   if(v==='loc'){ setCB('round'); tb.innerText='Figure — ABP Sample Locations (Rounds 1 & 2)'; }
   if(v==='hg'){ setCB('conc'); setAn('Hg'); tb.innerText='Figure — Mercury (Hg) Surface-Soil Results'; }
   if(v==='as'){ setCB('conc'); setAn('As'); tb.innerText='Figure — Arsenic (As) Surface-Soil Results'; }
-  if(v==='pmb'){ setCB('pmb'); tb.innerText='Figure — PMB / Background Exceedances'; }
   applyDisplay();
 });
 $('printBtn').addEventListener('click', ()=>window.print());
