@@ -180,8 +180,10 @@ select:focus,input[type=text]:focus,input[type=number]:focus{border-color:var(--
 .hint{font-size:11px;color:var(--muted);margin:4px 0}
 
 /* Map */
-#map{position:absolute;top:84px;left:0;right:0;bottom:0;z-index:1;transition:left .22s var(--ease)}   /* top: 46 (topbar) + 38 (tabBar) */
-body.tab-open #map{left:330px}
+/* Map stays full-viewport at all times — the panel (z-index 1100) slides OVER it.
+   Animating #map.left would create jitter because Leaflet only re-tiles on
+   invalidateSize(), so tiles are stretched mid-transition and snap at the end. */
+#map{position:absolute;top:84px;left:0;right:0;bottom:0;z-index:1}   /* top: 46 (topbar) + 38 (tabBar) */
 
 /* Legend */
 #legend{position:absolute;bottom:22px;right:12px;z-index:1000;background:var(--overlay);color:var(--ink);
@@ -339,8 +341,12 @@ body:not(.tab-open) #coords{left:0}
       <label class="field">Name</label>
       <input type="text" id="duEdit_name" maxlength="60" autocomplete="off">
 
-      <label class="field">Action</label>
-      <select id="duEdit_action"></select>
+      <label class="field">Action <span class="du-depth-mode" id="duEdit_actionModeLabel"></span></label>
+      <div class="row" style="gap:4px">
+        <select id="duEdit_action" style="flex:1"></select>
+        <button type="button" class="btn" id="duEdit_actionSuggest" title="Suggest from Chebyshev UCL vs active standard" style="flex:none;padding:5px 10px">Suggest</button>
+      </div>
+      <p class="hint" id="duEdit_actionBasis" style="margin-top:4px"></p>
 
       <div class="du-modal-row">
         <div style="flex:1">
@@ -1535,7 +1541,8 @@ function activateTab(name){
     document.body.classList.add('tab-open');
     STATE.activeTab = name;
   }
-  setTimeout(() => { if(typeof map !== 'undefined' && map) map.invalidateSize(); }, 240);
+  // Map size does not change on tab toggle (panel overlays the map), so no
+  // invalidateSize is needed — that call was the source of the jitter.
   scheduleAutosave();
 }
 document.querySelectorAll('.tab-btn').forEach(b => {
@@ -1921,9 +1928,11 @@ function loadShapesGeoJSON(gj){
     if(layer.setStyle && pr.style) layer.setStyle(pr.style);
     if(pr.du){
       layer.duMeta = pr.du;
-      // DUs persisted before the auto-depth feature have no depthMode — treat them as
-      // manual so the user's previously-set depthFt is not silently overwritten on load.
-      if(!layer.duMeta.depthMode){ layer.duMeta.depthMode = 'manual'; layer.duMeta.depthBasis = null; }
+      // Legacy DUs (saved before auto-depth / auto-action features existed) have no
+      // *Mode fields — treat both as manual so we never silently overwrite a value
+      // the user previously set.
+      if(!layer.duMeta.depthMode){  layer.duMeta.depthMode  = 'manual'; layer.duMeta.depthBasis  = null; }
+      if(!layer.duMeta.actionMode){ layer.duMeta.actionMode = 'manual'; layer.duMeta.actionBasis = null; }
     }            // SECTION — DECISION UNITS & SCENARIOS: restore DU metadata (styling re-applied by mergeDUStateFromSession at end of loadSession)
     drawnItems.addLayer(layer);
     attachShapeInfo(layer);
@@ -2653,6 +2662,25 @@ function fitToData(){
       bottomedOut,
     };
   }
+  // Suggest a DU action based on the Chebyshev UCL vs the active standard.
+  // PASS -> 'Leave', ACT -> 'HandExcavate', TBD -> 'Undecided'. For BOTH mode
+  // uses PMB (stricter) so the default action is conservative.
+  function suggestDuAction(layer, standardOverride){
+    const std = standardOverride
+             || (STATE.du && STATE.du.compareStandard === 'BOTH' ? 'PMB' : (STATE.du && STATE.du.compareStandard) || 'ROD');
+    const stats = duStats(layer);
+    const call = duCallVsStandard(stats, std);
+    if(call.call === 'PASS'){
+      return { action:'Leave',
+        basis:`Suggested: Leave / revegetate — ${call.label}` };
+    }
+    if(call.call === 'ACT'){
+      return { action:'HandExcavate',
+        basis:`Suggested: Hand-excavate — ${call.label}` };
+    }
+    return { action:'Undecided',
+      basis:`Suggested: Undecided — ${call.label}` };
+  }
   function duStats(layer){
     const samples = pointsInsideDU(layer);
     const n = samples.length;
@@ -2706,29 +2734,49 @@ function fitToData(){
     };
   }
 
-  // Compute PASS/ACT against a specific standard ('ROD' | 'PMB')
-  function duCallVsStandard(Hg, standard){
+  // Compute PASS/ACT against a specific standard. Considers every analyte that
+  // has a usable UCL (Hg and As at this site; Sb/Tl only if they ever escape
+  // their all-ND status). The "driver" is the analyte with the highest
+  // UCL/threshold ratio. PASS = every checked analyte is at or below its
+  // threshold. ACT = at least one exceeds.
+  function duCallVsStandard(stats, standard){
     const tag = standard === 'PMB' ? 'BG'  : 'ROD';
     const lbl = standard === 'PMB' ? 'background' : 'ROD';
-    const thr = standard === 'PMB' ? ((CRITERIA.PMB||{}).Hg || 58) : CRITERIA.ROD.Hg;
-    if(!Hg || !Hg.hasResult) return { tag, standard, call:'TBD', threshold:thr, label:`${tag}: n=0 — no samples`, cls:'du-tbd' };
-    if(Hg.n < 3)             return { tag, standard, call:'TBD', threshold:thr, label:`${tag}: n=${Hg.n} — too few for UCL`, cls:'du-tbd' };
-    if(Hg.uclC == null)      return { tag, standard, call:'TBD', threshold:thr, label:`${tag}: UCL not computable`, cls:'du-tbd' };
-    const pass = Hg.uclC <= thr;
+    const thrs = (CRITERIA[standard === 'PMB' ? 'PMB' : 'ROD']) || {};
+    const HgThr = thrs.Hg || (standard === 'PMB' ? 58 : 204);
+    // Back-compat: callers may still pass byAnalyte.Hg directly; detect that shape.
+    const byA = (stats && stats.byAnalyte) ? stats.byAnalyte : { Hg: stats };
+    const ratios = [];
+    ANALYTES.forEach(a => {
+      const s = byA[a]; if(!s || !s.hasResult || s.allND) return;
+      if(s.n < 3 || s.uclC == null) return;
+      const thr = thrs[a]; if(!isNum(thr) || thr <= 0) return;
+      ratios.push({ a, ucl: s.uclC, thr, ratio: s.uclC / thr });
+    });
+    if(!ratios.length){
+      const Hg = byA.Hg;
+      const reason = (!Hg || !Hg.hasResult) ? 'n=0 — no samples'
+                   : (Hg.n < 3 ? `n=${Hg.n} — too few for UCL` : 'UCL not computable');
+      return { tag, standard, call:'TBD', threshold: HgThr, driver: null,
+               label:`${tag}: ${reason}`, cls:'du-tbd' };
+    }
+    ratios.sort((a,b) => b.ratio - a.ratio);
+    const driver = ratios[0];
+    const pass = driver.ratio <= 1;
     return {
-      tag, standard, call: pass ? 'PASS' : 'ACT', threshold: thr,
+      tag, standard, call: pass ? 'PASS' : 'ACT', threshold: driver.thr,
+      driver: driver.a, driverUCL: driver.ucl,
       label: pass
-        ? `leave-eligible vs ${lbl} (Chebyshev UCL ${Hg.uclC.toFixed(0)} ≤ ${thr})`
-        : `action indicated vs ${lbl} (Chebyshev UCL ${Hg.uclC.toFixed(0)} > ${thr})`,
+        ? `leave-eligible vs ${lbl} — highest UCL/threshold ratio is ${driver.a} (${driver.ucl.toFixed(0)} / ${driver.thr})`
+        : `action indicated vs ${lbl} — ${driver.a} UCL ${driver.ucl.toFixed(0)} > ${driver.thr}`,
       cls: pass ? 'du-pass' : 'du-act'
     };
   }
   // Returns 1 or 2 calls depending on STATE.du.compareStandard.
   function duCalls(stats){
-    const Hg = stats.byAnalyte.Hg;
     const std = (STATE.du && STATE.du.compareStandard) || 'ROD';
-    if(std === 'BOTH') return [duCallVsStandard(Hg,'ROD'), duCallVsStandard(Hg,'PMB')];
-    return [duCallVsStandard(Hg, std)];
+    if(std === 'BOTH') return [duCallVsStandard(stats,'ROD'), duCallVsStandard(stats,'PMB')];
+    return [duCallVsStandard(stats, std)];
   }
   // Back-compat: single-call helper (used by DU list etc.). Returns the call under the
   // primary standard (ROD or PMB if PMB-only; first of two if BOTH).
@@ -2784,9 +2832,11 @@ function fitToData(){
       schema: DU_SCHEMA,
       id: opts.id || genId('du'),
       name: opts.name || `DU-${n}`,
-      action: opts.action || 'Undecided',
+      action: opts.action || 'Undecided',              // placeholder; possibly auto-replaced below
+      actionMode: opts.action ? 'manual' : 'auto',
+      actionBasis: null,
       scenarioId: opts.scenarioId || STATE.du.activeScenarioId,
-      depthFt: 0.5,                                   // placeholder; overwritten below
+      depthFt: 0.5,                                    // placeholder; overwritten below
       depthMode: opts.depthFt != null ? 'manual' : 'auto',
       depthBasis: null,
       bulkDensity: opts.bulkDensity || null,
@@ -2800,6 +2850,11 @@ function fitToData(){
       const auto = duAutoDepth(layer);
       layer.duMeta.depthFt = auto.depthFt;
       layer.duMeta.depthBasis = auto.basis;
+    }
+    if(!opts.action){
+      const suggest = suggestDuAction(layer);
+      layer.duMeta.action = suggest.action;
+      layer.duMeta.actionBasis = suggest.basis;
     }
     applyDUStyle(layer);
     attachShapeInfo(layer);
@@ -2942,16 +2997,22 @@ function fitToData(){
         : `${a}: ${s.nDetect}/${s.n} detect (max ${fmt(s.max,2)})`);
     });
 
-    const badges = calls.map(c => `<span class="${c.cls}" title="${c.label}">${c.tag}: ${c.call}</span>`).join(' ');
+    const badges = calls.map(c => {
+      const drv = (c.call === 'ACT' && c.driver) ? ` (${c.driver})` : '';
+      return `<span class="${c.cls}" title="${c.label}">${c.tag}: ${c.call}${drv}</span>`;
+    }).join(' ');
     const callLabels = calls.map(c => c.label).join('<br>');
 
     const depthTag = (meta.depthMode === 'auto')
       ? ` <span class="du-depth-mode auto" title="${(meta.depthBasis||'').replace(/"/g,'&quot;')}">auto</span>`
       : '';
+    const actionTag = (meta.actionMode === 'auto')
+      ? ` <span class="du-depth-mode auto" title="${(meta.actionBasis||'').replace(/"/g,'&quot;')}">auto</span>`
+      : '';
     return `<div class="du-report">
       <div><b>DU: ${meta.name}</b> · ${badges}</div>
       <div style="font-size:10.5px;color:var(--muted);margin:2px 0">
-        Action: <b>${act.label}</b> · Scenario: ${sc?sc.name:'?'}<br>
+        Action: <b>${act.label}</b>${actionTag} · Scenario: ${sc?sc.name:'?'}<br>
         ${brk} · ${stats.area_ac.toFixed(3)} ac · depth ${meta.depthFt} ft${depthTag} · vol ${fmtInt(stats.volume_yd3)} yd³ · Hg mass ${fmt(stats.HgMass_kg,2)} kg
       </div>
       <table>
@@ -3054,6 +3115,18 @@ function fitToData(){
     else if(mode === 'manual') hint.textContent = 'Manual depth — click "Auto" to detect from deepest exceedance inside this polygon.';
     else hint.textContent = '';
   }
+  // Same pattern for the action field — AUTO if suggested from UCL, MANUAL when user picks.
+  let _actionModeCurrent = 'manual';
+  function _setActionModeUI(mode, basis){
+    _actionModeCurrent = mode;
+    const tag = _$('duEdit_actionModeLabel');
+    tag.textContent = mode === 'auto' ? 'AUTO' : 'MANUAL';
+    tag.className = 'du-depth-mode ' + (mode === 'auto' ? 'auto' : 'manual');
+    const hint = _$('duEdit_actionBasis');
+    if(mode === 'auto' && basis) hint.textContent = basis;
+    else if(mode === 'manual') hint.textContent = 'Manual choice — click "Suggest" to recommend an action from the Chebyshev UCL vs the active standard.';
+    else hint.textContent = '';
+  }
   window.duEditPrompt = function(duId){
     const l = findDUById(duId); if(!l) return;
     const meta = l.duMeta;
@@ -3061,6 +3134,7 @@ function fitToData(){
     _$('duModalTitle').textContent = 'Edit Decision Unit — ' + meta.name;
     _$('duEdit_name').value      = meta.name || '';
     _populateActionSelect(meta.action || 'Undecided');
+    _setActionModeUI(meta.actionMode || 'manual', meta.actionBasis);
     _$('duEdit_depth').value     = meta.depthFt != null ? meta.depthFt : 0.5;
     _setDepthModeUI(meta.depthMode || 'manual', meta.depthBasis);
     _$('duEdit_bulkDensity').value = (meta.bulkDensity != null && meta.bulkDensity > 0) ? meta.bulkDensity : '';
@@ -3099,6 +3173,8 @@ function fitToData(){
       return;
     }
     meta.name = name; meta.action = action; meta.depthFt = depth;
+    meta.actionMode = _actionModeCurrent;
+    meta.actionBasis = (_actionModeCurrent === 'auto') ? _$('duEdit_actionBasis').textContent : null;
     meta.depthMode = _depthModeCurrent;
     meta.depthBasis = (_depthModeCurrent === 'auto') ? _$('duEdit_depthBasis').textContent : null;
     meta.bulkDensity = bd; meta.postExcavationMean = pem;
@@ -3115,11 +3191,22 @@ function fitToData(){
   _$('duEditModal').addEventListener('click', e => { if(e.target.id === 'duEditModal') _closeDuModal(); });
   _$('duEdit_action').addEventListener('change', e => {
     _toggleConditionalRows(e.target.value);
+    // User picked manually -> flip the mode tag to MANUAL
+    if(_actionModeCurrent === 'auto') _setActionModeUI('manual', null);
     // refresh destination options if we just switched into ExcavateConsolidate
     if(e.target.value === 'ExcavateConsolidate' && _duModalEditingId){
       const l = findDUById(_duModalEditingId);
       if(l) _populateDestSelect(l.duMeta);
     }
+  });
+  // Suggest button — recompute auto-action from current polygon + active standard
+  _$('duEdit_actionSuggest').addEventListener('click', () => {
+    if(!_duModalEditingId) return;
+    const l = findDUById(_duModalEditingId); if(!l) return;
+    const sug = suggestDuAction(l);
+    _$('duEdit_action').value = sug.action;
+    _toggleConditionalRows(sug.action);
+    _setActionModeUI('auto', sug.basis);
   });
   _$('duEdit_scenario').addEventListener('change', () => {
     // dest list depends on the chosen scenario
@@ -3205,8 +3292,8 @@ function fitToData(){
       residualMeanHg: wrDen > 0 ? wrNum / wrDen : null,
       // Always compute both standards' pass-counts so the comparison table can
       // render whichever the active compareStandard selector requests.
-      passROD: dus.reduce((n,l) => n + (duCallVsStandard(duStats(l).byAnalyte.Hg,'ROD').call==='PASS' ? 1 : 0), 0),
-      passPMB: dus.reduce((n,l) => n + (duCallVsStandard(duStats(l).byAnalyte.Hg,'PMB').call==='PASS' ? 1 : 0), 0),
+      passROD: dus.reduce((n,l) => n + (duCallVsStandard(duStats(l),'ROD').call==='PASS' ? 1 : 0), 0),
+      passPMB: dus.reduce((n,l) => n + (duCallVsStandard(duStats(l),'PMB').call==='PASS' ? 1 : 0), 0),
       issues,
     };
   }
@@ -3428,24 +3515,33 @@ function fitToData(){
   });
   $du('duCompareStandard').addEventListener('change', e => {
     STATE.du.compareStandard = e.target.value;       // 'ROD' | 'PMB' | 'BOTH'
-    // Recompute depth on every DU still in auto mode — PMB is stricter, so auto-depth
-    // typically goes deeper under PMB or BOTH than under ROD. Manual DUs are left alone.
-    let recomputed = 0;
+    // Recompute depth + action on every DU still in auto mode — PMB is stricter,
+    // so auto-derived depth tends to go deeper and a Leave call can flip to Hand-
+    // excavate. Manual DUs are left alone for both fields.
+    let depthRecomputed = 0, actionRecomputed = 0;
     eachDU(l => {
-      if(l.duMeta && l.duMeta.depthMode === 'auto'){
+      if(!l.duMeta) return;
+      if(l.duMeta.depthMode === 'auto'){
         const before = l.duMeta.depthFt;
         const auto = duAutoDepth(l);
         l.duMeta.depthFt = auto.depthFt;
         l.duMeta.depthBasis = auto.basis;
-        if(auto.depthFt !== before) recomputed++;
+        if(auto.depthFt !== before) depthRecomputed++;
+      }
+      if(l.duMeta.actionMode === 'auto'){
+        const before = l.duMeta.action;
+        const sug = suggestDuAction(l);
+        l.duMeta.action = sug.action;
+        l.duMeta.actionBasis = sug.basis;
+        if(sug.action !== before) actionRecomputed++;
       }
     });
     refreshDUUI();
-    eachDU(l => attachShapeInfo(l));                 // re-render every DU popup so its badge(s) reflect the new standard
+    eachDU(l => { applyDUStyle(l); attachShapeInfo(l); });   // restyle (action color) + re-render popups
     const out = document.getElementById('duCompareOut'); if(out && out.innerHTML) renderCompareTable();
     scheduleAutosave();
-    if(recomputed > 0){
-      console.log(`[ABP] compareStandard -> ${e.target.value}: recomputed auto-depth on ${recomputed} DU(s)`);
+    if(depthRecomputed > 0 || actionRecomputed > 0){
+      console.log(`[ABP] compareStandard -> ${e.target.value}: auto-depth changed on ${depthRecomputed} DU(s), auto-action changed on ${actionRecomputed} DU(s)`);
     }
   });
   $du('duActiveScenario').addEventListener('change', e => {
