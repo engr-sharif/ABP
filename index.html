@@ -934,7 +934,7 @@ function fillFor(p, mode){
 /* =========================================================================
    SECTION 4 — SAMPLE LAYER (SVG markers, popups, labels)
    ========================================================================= */
-const sampleLayer = L.layerGroup().addTo(map);
+const sampleLayer = L.layerGroup([], { pmIgnore: true }).addTo(map);   // pmIgnore — sample points are fixed reference data and must not be editable/movable/deletable via Geoman tools
 const markerById = {};   // id -> marker
 
 function svgMarker(p, mode){
@@ -1222,7 +1222,7 @@ function filteredFeatures(){ return DATA.features.filter(f=>passesFilter(f.prope
 
 function makeMarker(p, lon, lat, opts){
   opts = opts || {};
-  const m = L.marker([lat,lon], { icon:svgMarker(p, opts.mode), pane:opts.pane||'markerPane' });
+  const m = L.marker([lat,lon], { icon:svgMarker(p, opts.mode), pane:opts.pane||'markerPane', pmIgnore:true });  // pmIgnore — sample points are fixed data, not user-drawn shapes
   m.featureProps = p;
   m.bindPopup(()=>popupHtml(p), { maxWidth:460, minWidth:340 });
   if(STATE.showLabels && !opts.noLabel){
@@ -1589,13 +1589,13 @@ function updateGrid(){
   const s=Math.min(...lats), n=Math.max(...lats), w=Math.min(...lons), e=Math.max(...lons);
   const latFt=364000, lonFt=364000*Math.cos(s*Math.PI/180);
   const dLat=cell/latFt, dLon=cell/lonFt;
-  gridLayer = L.layerGroup();
+  gridLayer = L.layerGroup([], { pmIgnore:true });   // pmIgnore — analysis grid is reference, not user-drawn
   for(let lat=s; lat<n+dLat; lat+=dLat){
     for(let lon=w; lon<e+dLon; lon+=dLon){
       const cnt = samp.filter(c=>c[0]>=lon && c[0]<lon+dLon && c[1]>=lat && c[1]<lat+dLat).length;
       const col = cnt===0 ? '#d7191c' : cnt<=2 ? '#fdae61' : '#1a9641';
       L.rectangle([[lat,lon],[lat+dLat,lon+dLon]],
-        { color:'#666', weight:0.5, fillColor:col, fillOpacity:0.22, interactive:false }).addTo(gridLayer);
+        { color:'#666', weight:0.5, fillColor:col, fillOpacity:0.22, interactive:false, pmIgnore:true }).addTo(gridLayer);
     }
   }
   gridLayer.addTo(map);
@@ -2070,7 +2070,7 @@ let clusterGroup = null;
 function clearCluster(){ if(clusterGroup){ map.removeLayer(clusterGroup); clusterGroup=null; } }
 function buildCluster(){
   clearCluster();
-  clusterGroup = L.markerClusterGroup({ maxClusterRadius:45, chunkedLoading:true, spiderfyOnMaxZoom:true });
+  clusterGroup = L.markerClusterGroup({ maxClusterRadius:45, chunkedLoading:true, spiderfyOnMaxZoom:true, pmIgnore:true });  // pmIgnore — clustered sample points are fixed data
   DATA.features.forEach(f=>{
     const p=f.properties; if(!passesFilter(p)) return;
     const [lon,lat]=f.geometry.coordinates;
@@ -2193,7 +2193,7 @@ function autoDelineate(){
   });
   if($('delinShowPts').checked) exceed.forEach(f=>{
     const c=f.geometry.coordinates;
-    const dot=L.circleMarker([c[1],c[0]],{radius:3,color:'#7a0000',weight:1,fillColor:'#d7191c',fillOpacity:.9});
+    const dot=L.circleMarker([c[1],c[0]],{radius:3,color:'#7a0000',weight:1,fillColor:'#d7191c',fillOpacity:.9, pmIgnore:true});  // pmIgnore — auto-delineation dots reflect sample exceedances, not user shapes
     drawnItems.addLayer(dot); delinLayers.push(dot);
   });
   if(added) delinSummary();
