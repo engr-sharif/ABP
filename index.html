@@ -218,6 +218,40 @@ body.tab-open #map{left:330px}
 .popup-bl .hi-badge{font-weight:700;font-size:11px;color:#1f2933;padding:1px 7px;border-radius:10px;border:1px solid rgba(0,0,0,.25);margin-left:4px}
 .popup-bl .bl-table .nd{color:var(--muted);font-style:italic}
 .popup-bl .bl-table .ql{display:inline-block;font-size:9px;font-weight:700;padding:0 3px;border-radius:2px;background:rgba(127,127,127,.18);color:var(--ink);vertical-align:1px}
+
+/* DU edit modal — replaces native prompt() chain for multi-field edits */
+.du-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:5000;
+  display:flex;align-items:center;justify-content:center;animation:duModalFadeIn .12s ease}
+.du-modal-overlay[hidden]{display:none}
+@keyframes duModalFadeIn{from{opacity:0}to{opacity:1}}
+.du-modal{background:var(--panel);color:var(--ink);border-radius:10px;width:440px;max-width:92vw;
+  max-height:90vh;display:flex;flex-direction:column;box-shadow:0 14px 40px rgba(0,0,0,.4);border:1px solid var(--line)}
+.du-modal-head{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex:none}
+.du-modal-head h3{margin:0;font-size:14px;font-weight:700;color:var(--ink);letter-spacing:.2px}
+.du-modal-x{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:16px;
+  padding:4px 9px;border-radius:4px;line-height:1}
+.du-modal-x:hover{background:rgba(0,0,0,.08);color:var(--ink)}
+body.dark .du-modal-x:hover{background:rgba(255,255,255,.08)}
+.du-modal-body{padding:8px 16px 14px 16px;overflow-y:auto;flex:1 1 auto}
+.du-modal-body .field{margin:9px 0 3px;font-size:11px;font-weight:600;color:var(--muted)}
+.du-modal-body input[type="text"],.du-modal-body input[type="number"],
+.du-modal-body select,.du-modal-body textarea{width:100%;padding:6px 8px;
+  border:1px solid var(--line);border-radius:5px;font-size:12px;background:var(--card);color:var(--ink);font-family:inherit}
+.du-modal-body textarea{resize:vertical;min-height:40px}
+.du-modal-body .hint{font-size:10.5px;color:var(--muted);margin:2px 0 4px}
+.du-modal-row{display:flex;gap:10px}
+.du-modal-foot{padding:10px 16px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;
+  align-items:center;gap:8px;flex:none;background:rgba(0,0,0,.02)}
+body.dark .du-modal-foot{background:rgba(255,255,255,.03)}
+.du-modal-foot .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+.du-modal-foot .btn.primary:hover{filter:brightness(1.08)}
+.du-modal-msg{font-size:11px;color:#b35900;margin-right:auto}
+
+/* DU popup — fit content without internal scrollbar (Leaflet imposes a max-height by default) */
+.leaflet-popup.du-popup .leaflet-popup-content-wrapper{max-height:none}
+.leaflet-popup.du-popup .leaflet-popup-content{max-height:none !important;margin:10px 14px;line-height:1.35}
+.du-pop-head{font-size:11px;color:var(--muted);padding-bottom:4px;border-bottom:1px solid var(--line);margin-bottom:4px}
+.du-pop-head b{color:var(--ink)}
 body.dark .popup-bl .hi-badge{color:#0e1217}
 .popup-bl .bl-chart-wrap{margin-top:8px;border-top:1px solid var(--line);padding-top:6px}
 .popup-bl .bl-depth-chart{width:100% !important;max-width:380px;height:150px !important;display:block}
@@ -288,6 +322,57 @@ body:not(.tab-open) #coords{left:0}
 </style>
 </head>
 <body><!-- 'tab-open' class is toggled by activateTab() — no tab active on first load = clean map -->
+
+<!-- DU edit modal (hidden by default; shown by window.duEditPrompt) -->
+<div id="duEditModal" class="du-modal-overlay" hidden>
+  <div class="du-modal" role="dialog" aria-modal="true" aria-labelledby="duModalTitle">
+    <div class="du-modal-head">
+      <h3 id="duModalTitle">Edit Decision Unit</h3>
+      <button id="duModalClose" class="du-modal-x" aria-label="close">✕</button>
+    </div>
+    <div class="du-modal-body">
+      <label class="field">Name</label>
+      <input type="text" id="duEdit_name" maxlength="60" autocomplete="off">
+
+      <label class="field">Action</label>
+      <select id="duEdit_action"></select>
+
+      <div class="du-modal-row">
+        <div style="flex:1">
+          <label class="field">Depth (ft)</label>
+          <input type="number" id="duEdit_depth" step="0.25" min="0">
+        </div>
+        <div style="flex:1">
+          <label class="field">Bulk density (kg/m³)</label>
+          <input type="number" id="duEdit_bulkDensity" step="50" min="800" max="2200" placeholder="default 1500">
+        </div>
+      </div>
+
+      <div id="duEdit_pemRow" style="display:none">
+        <label class="field">Post-excavation confirmation mean Hg (mg/kg)</label>
+        <input type="number" id="duEdit_pem" step="1" min="0" placeholder="default = PMB 58">
+        <p class="hint">Used as the residual mean for this DU after excavation. Default is the site background (PMB) value.</p>
+      </div>
+
+      <div id="duEdit_destRow" style="display:none">
+        <label class="field">Destination DU (where excavated soil goes)</label>
+        <select id="duEdit_dest"></select>
+        <p class="hint">Required for "Excavate &amp; consolidate" — picks which other DU in this scenario receives the consolidated soil.</p>
+      </div>
+
+      <label class="field">Scenario</label>
+      <select id="duEdit_scenario"></select>
+
+      <label class="field">Notes (optional)</label>
+      <textarea id="duEdit_notes" rows="2"></textarea>
+    </div>
+    <div class="du-modal-foot">
+      <span id="duModalMsg" class="du-modal-msg"></span>
+      <button class="btn" id="duModalCancel">Cancel</button>
+      <button class="btn primary" id="duModalSave">Save</button>
+    </div>
+  </div>
+</div>
 
 <!-- ============================== TOP BAR ============================== -->
 <div id="topbar">
@@ -602,12 +687,20 @@ body:not(.tab-open) #coords{left:0}
       <div class="du-sub closed" id="duSub-settings">
         <h3>DU settings <span class="chev">▾</span></h3>
         <div class="body">
-          <label class="field">Default bulk density (kg/m³)</label>
+          <label class="field">Compare DU UCL against</label>
+          <select id="duCompareStandard">
+            <option value="ROD">ROD cleanup level (Hg 204) — mine-area standard</option>
+            <option value="PMB">Background / PMB (Hg 58) — accessible / EIC-area standard</option>
+            <option value="BOTH">Both side-by-side</option>
+          </select>
+          <p class="hint">Switches the PASS/ACT call on every DU. Use <b>Background</b> if EPA treats the ABP as an accessible area requiring restoration to natural levels; use <b>ROD</b> if it falls under the mine-area standard. <b>Both</b> shows two badges so you can present the picture under each.</p>
+
+          <label class="field" style="margin-top:10px">Default bulk density (kg/m³)</label>
           <input type="number" id="duBulkDensity" value="1500" min="800" max="2200" step="50">
           <label class="checkrow"><input type="checkbox" id="duIncludeEA" checked> Include EA historical in DU populations</label>
           <p class="du-method-note">
             <b>UCL method.</b> Per-DU stats show <b>Student-t UCL</b> and <b>Chebyshev UCL</b> on raw values (½ DL substitution for non-detects). PASS/ACT uses the Chebyshev (conservative).
-            <br><b>Screening only.</b> Formal ROD compliance is per Exposure Unit via ProUCL. Per-DU UCL is a screening aid, not a ROD compliance test.
+            <br><b>Screening only.</b> Formal compliance is per Exposure Unit via ProUCL. Per-DU UCL is a screening aid, not a compliance test.
             <br><b>Sb &amp; Tl.</b> When 100% of in-DU samples are non-detect, the report shows "All ND at MDL X, &lt; ROD Y — no further action indicated" instead of stats.
           </p>
         </div>
@@ -1752,10 +1845,25 @@ function shapeStats(layer){
 function attachShapeInfo(layer){
   const info = shapeStats(layer);
   if(info.kind!=='Annotation'){
-    // SECTION — DECISION UNITS & SCENARIOS: when a layer is a DU, append the report card and the toggle button
-    let html = info.html;
-    if(typeof duPopupAddendum === 'function') html += duPopupAddendum(layer, info);
-    if(layer.getPopup()) layer.setPopupContent(html); else layer.bindPopup(html);
+    // SECTION — DECISION UNITS & SCENARIOS: DUs get a wider popup and skip the
+    // redundant "samples inside" mini-list because the DU report card has the same
+    // data in a clean table — keeps the popup from needing internal scroll.
+    let html, popupOpts;
+    if(layer.duMeta && typeof window.duFullPopupHtml === 'function'){
+      html = window.duFullPopupHtml(layer, info);
+      popupOpts = { maxWidth: 540, minWidth: 380, maxHeight: 0, autoPan: true, className: 'du-popup' };
+    } else {
+      html = info.html;
+      if(typeof duPopupAddendum === 'function') html += duPopupAddendum(layer, info);
+      popupOpts = { maxWidth: 460, minWidth: 320 };
+    }
+    if(layer.getPopup()){
+      layer.setPopupContent(html);
+      // ensure options are refreshed if the layer was promoted/unmarked since last bind
+      Object.assign(layer.getPopup().options, popupOpts);
+    } else {
+      layer.bindPopup(html, popupOpts);
+    }
     $('measureOut').innerHTML = html;
   }
 }
@@ -2399,6 +2507,7 @@ function fitToData(){
     defaultBulkDensity: DEFAULT_BULK_DENSITY,
     includeEA: true,
     autoMark: false,
+    compareStandard: 'ROD',  // 'ROD' (Hg 204, mine-area) | 'PMB' (Hg 58, accessible/EIC-area) | 'BOTH' side-by-side
   };
 
   function genId(prefix){ return prefix + '_' + Math.random().toString(36).slice(2, 9); }
@@ -2532,16 +2641,33 @@ function fitToData(){
     };
   }
 
-  function duCall(stats){
-    const Hg = stats.byAnalyte.Hg;
-    if(!Hg || !Hg.hasResult) return { call:'TBD', label:'n=0 — no samples', cls:'du-tbd' };
-    if(Hg.n < 3)             return { call:'TBD', label:`n=${Hg.n} — too few for UCL`, cls:'du-tbd' };
-    if(Hg.uclC == null)      return { call:'TBD', label:'UCL not computable', cls:'du-tbd' };
-    const rod = CRITERIA.ROD.Hg;
-    return (Hg.uclC <= rod)
-      ? { call:'PASS', label:`leave-eligible (Chebyshev UCL ${Hg.uclC.toFixed(0)} ≤ ${rod})`, cls:'du-pass' }
-      : { call:'ACT',  label:`action indicated (Chebyshev UCL ${Hg.uclC.toFixed(0)} > ${rod})`, cls:'du-act' };
+  // Compute PASS/ACT against a specific standard ('ROD' | 'PMB')
+  function duCallVsStandard(Hg, standard){
+    const tag = standard === 'PMB' ? 'BG'  : 'ROD';
+    const lbl = standard === 'PMB' ? 'background' : 'ROD';
+    const thr = standard === 'PMB' ? ((CRITERIA.PMB||{}).Hg || 58) : CRITERIA.ROD.Hg;
+    if(!Hg || !Hg.hasResult) return { tag, standard, call:'TBD', threshold:thr, label:`${tag}: n=0 — no samples`, cls:'du-tbd' };
+    if(Hg.n < 3)             return { tag, standard, call:'TBD', threshold:thr, label:`${tag}: n=${Hg.n} — too few for UCL`, cls:'du-tbd' };
+    if(Hg.uclC == null)      return { tag, standard, call:'TBD', threshold:thr, label:`${tag}: UCL not computable`, cls:'du-tbd' };
+    const pass = Hg.uclC <= thr;
+    return {
+      tag, standard, call: pass ? 'PASS' : 'ACT', threshold: thr,
+      label: pass
+        ? `leave-eligible vs ${lbl} (Chebyshev UCL ${Hg.uclC.toFixed(0)} ≤ ${thr})`
+        : `action indicated vs ${lbl} (Chebyshev UCL ${Hg.uclC.toFixed(0)} > ${thr})`,
+      cls: pass ? 'du-pass' : 'du-act'
+    };
   }
+  // Returns 1 or 2 calls depending on STATE.du.compareStandard.
+  function duCalls(stats){
+    const Hg = stats.byAnalyte.Hg;
+    const std = (STATE.du && STATE.du.compareStandard) || 'ROD';
+    if(std === 'BOTH') return [duCallVsStandard(Hg,'ROD'), duCallVsStandard(Hg,'PMB')];
+    return [duCallVsStandard(Hg, std)];
+  }
+  // Back-compat: single-call helper (used by DU list etc.). Returns the call under the
+  // primary standard (ROD or PMB if PMB-only; first of two if BOTH).
+  function duCall(stats){ return duCalls(stats)[0]; }
 
   // ---- overlap guard (within active scenario only) -----------------------
   function wouldOverlapActiveDU(poly, ignoreLayer){
@@ -2704,7 +2830,8 @@ function fitToData(){
     if(!isDU(layer)) return '';
     const meta  = layer.duMeta;
     const stats = duStats(layer);
-    const call  = duCall(stats);
+    const calls = duCalls(stats);
+    const call  = calls[0];                              // primary call for back-compat (DU list, etc.)
     const sc    = STATE.du.scenarios.find(s => s.id === meta.scenarioId);
     const act   = DU_ACTION_LOOKUP[meta.action] || DU_ACTION_LOOKUP.Undecided;
     const db    = stats.datasetBreakdown;
@@ -2738,8 +2865,11 @@ function fitToData(){
         : `${a}: ${s.nDetect}/${s.n} detect (max ${fmt(s.max,2)})`);
     });
 
+    const badges = calls.map(c => `<span class="${c.cls}" title="${c.label}">${c.tag}: ${c.call}</span>`).join(' ');
+    const callLabels = calls.map(c => c.label).join('<br>');
+
     return `<div class="du-report">
-      <div><b>DU: ${meta.name}</b> · <span class="${call.cls}">${call.call}</span></div>
+      <div><b>DU: ${meta.name}</b> · ${badges}</div>
       <div style="font-size:10.5px;color:var(--muted);margin:2px 0">
         Action: <b>${act.label}</b> · Scenario: ${sc?sc.name:'?'}<br>
         ${brk} · ${stats.area_ac.toFixed(3)} ac · depth ${meta.depthFt} ft · vol ${fmtInt(stats.volume_yd3)} yd³ · Hg mass ${fmt(stats.HgMass_kg,2)} kg
@@ -2750,7 +2880,7 @@ function fitToData(){
       </table>
       ${sbtl.length ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${sbtl.join(' · ')}</div>` : ''}
       <div class="du-method-note">
-        ${call.label}<br>
+        ${callLabels}<br>
         UCL = Student-t (UCL-t) &amp; Chebyshev (UCL-C) on raw values; ½ DL substitution for non-detects. PASS/ACT uses Chebyshev (conservative).
         <br><b>Screening only</b> — formal ROD compliance is per Exposure Unit via ProUCL.
       </div>
@@ -2772,50 +2902,145 @@ function fitToData(){
       <span style="font-size:10px;color:var(--muted);margin-left:6px">(assigns to <b>${activeScenario().name}</b>)</span>
     </div>`;
   };
+
+  // Full-popup HTML for a DU — used by attachShapeInfo to skip the redundant
+  // ptStatsHtml sample-list and keep the popup fitting without internal scroll.
+  // Renders a slim header (area + volume only; the DU report card below has n,
+  // dataset breakdown, and the analyte table) followed by the report card.
+  window.duFullPopupHtml = function(layer, info){
+    const meta  = layer.duMeta || {};
+    const depthFt = meta.depthFt || 0.5;
+    const m2 = (info && info.poly) ? turf.area(info.poly) : 0;
+    const ft2 = m2 * 10.7639104;
+    const ac  = m2 / 4046.8564224;
+    const vol = ft2 * depthFt / 27;
+    const kind = (layer instanceof L.Circle) ? 'Circle' : 'Polygon';
+    const head = `<div class="du-pop-head">
+      <b>${kind} · ${ft2.toLocaleString(undefined,{maximumFractionDigits:0})} ft²
+        · ${ac.toFixed(3)} ac
+        · vol @ ${depthFt} ft = <b>${Math.round(vol).toLocaleString()} yd³</b></b>
+    </div>`;
+    return head + duReportHtml(layer);
+  };
   window.duPromote = function(h){
     const l = window['_duHandle_'+h]; if(!l) return;
     if(promoteToDU(l)) l.closePopup();
   };
+  // Open the styled modal for editing a DU. Replaces the chain of native prompts
+  // that the original implementation used — single form, all fields visible, OK/Cancel.
+  let _duModalEditingId = null;
+  function _$(id){ return document.getElementById(id); }
+  function _populateActionSelect(currentAction){
+    const sel = _$('duEdit_action');
+    sel.innerHTML = DU_ACTIONS.map(a =>
+      `<option value="${a.key}"${a.key===currentAction?' selected':''}>${a.label}</option>`
+    ).join('');
+  }
+  function _populateScenarioSelect(currentScenarioId){
+    const sel = _$('duEdit_scenario');
+    sel.innerHTML = STATE.du.scenarios.map(s =>
+      `<option value="${s.id}"${s.id===currentScenarioId?' selected':''}>${s.name}${s.readonly?' (default)':''}</option>`
+    ).join('');
+  }
+  function _populateDestSelect(meta){
+    const sel = _$('duEdit_dest');
+    const others = []; eachDU(x => {
+      if(x.duMeta.id !== meta.id && x.duMeta.scenarioId === (meta.scenarioId || STATE.du.activeScenarioId))
+        others.push(x.duMeta);
+    });
+    if(!others.length){
+      sel.innerHTML = '<option value="">(no other DUs in this scenario — create one first)</option>';
+      sel.disabled = true;
+    } else {
+      sel.disabled = false;
+      sel.innerHTML = ['<option value="">— choose —</option>',
+        ...others.map(d => `<option value="${d.id}"${d.id===meta.destinationDuId?' selected':''}>${d.name}</option>`)
+      ].join('');
+    }
+  }
+  function _toggleConditionalRows(action){
+    _$('duEdit_pemRow').style.display  = (action === 'HandExcavate')        ? '' : 'none';
+    _$('duEdit_destRow').style.display = (action === 'ExcavateConsolidate') ? '' : 'none';
+  }
   window.duEditPrompt = function(duId){
     const l = findDUById(duId); if(!l) return;
     const meta = l.duMeta;
-    const name = (prompt('DU name:', meta.name) || '').trim(); if(!name) return; meta.name = name;
-    const actOpts = DU_ACTIONS.map((a,i)=>`${i+1}=${a.label}`).join('\n');
-    const aIdx = prompt('Action:\n'+actOpts, String(DU_ACTIONS.findIndex(a=>a.key===meta.action)+1));
-    const aN = parseInt(aIdx, 10);
-    if(aN >= 1 && aN <= DU_ACTIONS.length) meta.action = DU_ACTIONS[aN-1].key;
-    const depth = parseFloat(prompt('Depth (ft):', String(meta.depthFt)));
-    if(isFinite(depth) && depth > 0) meta.depthFt = depth;
-    const bdIn = prompt('Bulk density (kg/m³, blank = use default '+STATE.du.defaultBulkDensity+'):',
-      meta.bulkDensity != null ? String(meta.bulkDensity) : '');
-    if(bdIn === '' || bdIn == null) meta.bulkDensity = null;
-    else { const v = parseFloat(bdIn); if(isFinite(v) && v > 0) meta.bulkDensity = v; }
-    if(meta.action === 'HandExcavate'){
-      const pem = prompt('Post-excavation confirmation mean Hg (mg/kg, blank = PMB '+((CRITERIA.PMB||{}).Hg||58)+'):',
-        meta.postExcavationMean != null ? String(meta.postExcavationMean) : '');
-      if(pem === '' || pem == null) meta.postExcavationMean = null;
-      else { const v = parseFloat(pem); if(isFinite(v)) meta.postExcavationMean = v; }
+    _duModalEditingId = duId;
+    _$('duModalTitle').textContent = 'Edit Decision Unit — ' + meta.name;
+    _$('duEdit_name').value      = meta.name || '';
+    _populateActionSelect(meta.action || 'Undecided');
+    _$('duEdit_depth').value     = meta.depthFt != null ? meta.depthFt : 0.5;
+    _$('duEdit_bulkDensity').value = (meta.bulkDensity != null && meta.bulkDensity > 0) ? meta.bulkDensity : '';
+    _$('duEdit_bulkDensity').placeholder = 'default ' + STATE.du.defaultBulkDensity;
+    _$('duEdit_pem').value       = meta.postExcavationMean != null ? meta.postExcavationMean : '';
+    _$('duEdit_pem').placeholder = 'default = PMB ' + ((CRITERIA.PMB||{}).Hg || 58);
+    _populateScenarioSelect(meta.scenarioId);
+    _populateDestSelect(meta);
+    _$('duEdit_notes').value     = meta.notes || '';
+    _toggleConditionalRows(meta.action);
+    _$('duModalMsg').textContent = '';
+    _$('duEditModal').hidden = false;
+    setTimeout(() => _$('duEdit_name').focus(), 30);
+  };
+  function _closeDuModal(){ _$('duEditModal').hidden = true; _duModalEditingId = null; }
+  function _saveDuModal(){
+    if(!_duModalEditingId) return _closeDuModal();
+    const l = findDUById(_duModalEditingId); if(!l){ return _closeDuModal(); }
+    const meta = l.duMeta;
+    const name = _$('duEdit_name').value.trim();
+    if(!name){ _$('duModalMsg').textContent = 'Name is required.'; _$('duEdit_name').focus(); return; }
+    const action = _$('duEdit_action').value;
+    const depth  = parseFloat(_$('duEdit_depth').value);
+    if(!(depth > 0)){ _$('duModalMsg').textContent = 'Depth must be > 0.'; _$('duEdit_depth').focus(); return; }
+    const bdRaw  = _$('duEdit_bulkDensity').value.trim();
+    const bd     = bdRaw === '' ? null : parseFloat(bdRaw);
+    if(bdRaw !== '' && !(bd > 0)){ _$('duModalMsg').textContent = 'Bulk density must be > 0 (or leave blank).'; return; }
+    const pemRaw = _$('duEdit_pem').value.trim();
+    const pem    = pemRaw === '' ? null : parseFloat(pemRaw);
+    if(pemRaw !== '' && !isFinite(pem)){ _$('duModalMsg').textContent = 'Post-exc mean must be a number (or leave blank).'; return; }
+    const destId = _$('duEdit_dest').value || null;
+    const scenId = _$('duEdit_scenario').value;
+    const notes  = _$('duEdit_notes').value;
+    if(action === 'ExcavateConsolidate' && !destId){
+      _$('duModalMsg').textContent = 'Excavate & consolidate requires a destination DU.';
+      return;
     }
-    if(meta.action === 'ExcavateConsolidate'){
-      const others = []; eachActiveDU(x => { if(x.duMeta.id !== meta.id) others.push(x.duMeta); });
-      if(!others.length){
-        alert('Excavate & consolidate requires another DU in the active scenario as destination. Create a destination DU first, then re-edit this one.');
-        meta.destinationDuId = null;
-      } else {
-        const opts = others.map((d,i)=>`${i+1}=${d.name}`).join('\n');
-        const sel = prompt('Destination DU:\n'+opts,
-          meta.destinationDuId ? String(others.findIndex(d=>d.id===meta.destinationDuId)+1) : '1');
-        const sN = parseInt(sel,10);
-        if(sN >= 1 && sN <= others.length) meta.destinationDuId = others[sN-1].id;
+    meta.name = name; meta.action = action; meta.depthFt = depth;
+    meta.bulkDensity = bd; meta.postExcavationMean = pem;
+    meta.destinationDuId = (action === 'ExcavateConsolidate') ? destId : null;
+    meta.scenarioId = scenId;
+    meta.notes = notes;
+    applyDUStyle(l); attachShapeInfo(l); refreshDUUI(); scheduleAutosave();
+    _closeDuModal();
+  }
+  // Wire modal once
+  _$('duModalCancel').addEventListener('click', _closeDuModal);
+  _$('duModalClose').addEventListener('click', _closeDuModal);
+  _$('duModalSave').addEventListener('click', _saveDuModal);
+  _$('duEditModal').addEventListener('click', e => { if(e.target.id === 'duEditModal') _closeDuModal(); });
+  _$('duEdit_action').addEventListener('change', e => {
+    _toggleConditionalRows(e.target.value);
+    // refresh destination options if we just switched into ExcavateConsolidate
+    if(e.target.value === 'ExcavateConsolidate' && _duModalEditingId){
+      const l = findDUById(_duModalEditingId);
+      if(l) _populateDestSelect(l.duMeta);
+    }
+  });
+  _$('duEdit_scenario').addEventListener('change', () => {
+    // dest list depends on the chosen scenario
+    if(_duModalEditingId){
+      const l = findDUById(_duModalEditingId);
+      if(l){
+        const meta = Object.assign({}, l.duMeta, { scenarioId: _$('duEdit_scenario').value });
+        _populateDestSelect(meta);
       }
     }
-    const scOpts = STATE.du.scenarios.map((s,i)=>`${i+1}=${s.name}`).join('\n');
-    const scIdx = prompt('Move to scenario:\n'+scOpts,
-      String(STATE.du.scenarios.findIndex(s=>s.id===meta.scenarioId)+1));
-    const scN = parseInt(scIdx,10);
-    if(scN >= 1 && scN <= STATE.du.scenarios.length) meta.scenarioId = STATE.du.scenarios[scN-1].id;
-    applyDUStyle(l); attachShapeInfo(l); refreshDUUI(); scheduleAutosave();
-  };
+  });
+  // Escape closes the modal
+  document.addEventListener('keydown', e => {
+    if(e.key === 'Escape' && !_$('duEditModal').hidden) _closeDuModal();
+    else if(e.key === 'Enter' && !_$('duEditModal').hidden && e.target.tagName !== 'TEXTAREA') _saveDuModal();
+  });
   window.duUnmark = function(duId){
     const l = findDUById(duId); if(!l) return;
     if(!confirm(`Unmark "${l.duMeta.name}"? The shape will remain on the map but will no longer be a DU.`)) return;
@@ -2871,6 +3096,10 @@ function fitToData(){
       HgMassRemoved_kg: HgMassRemoved,
       HgMassStabilized_kg: HgMassStabilized,
       residualMeanHg: wrDen > 0 ? wrNum / wrDen : null,
+      // Always compute both standards' pass-counts so the comparison table can
+      // render whichever the active compareStandard selector requests.
+      passROD: dus.reduce((n,l) => n + (duCallVsStandard(duStats(l).byAnalyte.Hg,'ROD').call==='PASS' ? 1 : 0), 0),
+      passPMB: dus.reduce((n,l) => n + (duCallVsStandard(duStats(l).byAnalyte.Hg,'PMB').call==='PASS' ? 1 : 0), 0),
       issues,
     };
   }
@@ -2879,11 +3108,19 @@ function fitToData(){
   function compareTableRows(){
     return STATE.du.scenarios.map(s => Object.assign({ id:s.id, name:s.name }, scenarioTotals(s.id)));
   }
+  // Standards to display in the compare table, given the current compareStandard
+  function activeStandards(){
+    const s = (STATE.du && STATE.du.compareStandard) || 'ROD';
+    return s === 'BOTH' ? ['ROD','PMB'] : [s];
+  }
   function renderCompareTable(){
     const rows = compareTableRows();
+    const stds = activeStandards();
+    const passCols = stds.map(s => s==='PMB' ? 'PASS / Background' : 'PASS / ROD');
     const headers = [
       'Scenario','# DUs','Acres total','Acres disturbed','Disturbed vol (yd³)',
       'Hg removed (kg)','Hg stabilized (kg)','Residual mean Hg (mg/kg)',
+      ...passCols,
       ...DU_ACTIONS.map(a => `ac: ${a.key}`),
       'Issues'
     ];
@@ -2894,6 +3131,10 @@ function fitToData(){
         ? `<td title="${r.issues.join('\n').replace(/"/g,'&quot;')}" style="color:#b35900">⚠ ${r.issues.length}</td>`
         : '<td>—</td>';
       const actionAcres = DU_ACTIONS.map(a => `<td>${(r.acresByAction[a.key]||0).toFixed(3)}</td>`).join('');
+      const passCells = stds.map(s => {
+        const p = s==='PMB' ? r.passPMB : r.passROD;
+        return `<td>${p} / ${r.nDUs}</td>`;
+      }).join('');
       return `<tr${active}>
         <td style="text-align:left">${r.name}</td>
         <td>${r.nDUs}</td>
@@ -2903,18 +3144,26 @@ function fitToData(){
         <td>${r.HgMassRemoved_kg.toFixed(2)}</td>
         <td>${r.HgMassStabilized_kg.toFixed(2)}</td>
         <td>${r.residualMeanHg!=null ? r.residualMeanHg.toFixed(1) : '—'}</td>
+        ${passCells}
         ${actionAcres}
         ${issuesCell}
       </tr>`;
     }).join('');
+    const stdNote = stds.length===2
+      ? 'Showing PASS counts under <b>both</b> standards (ROD 204 / Background 58).'
+      : (stds[0]==='PMB' ? 'Showing PASS counts vs <b>background (PMB Hg 58)</b>.'
+                         : 'Showing PASS counts vs <b>ROD (Hg 204)</b>.');
     document.getElementById('duCompareOut').innerHTML =
       `<table class="du-compare-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table>
-       <p class="hint">Acres disturbed = hand-excavate + excavate&amp;consolidate + amend surface. Residual mean Hg is area-weighted across the scenario's DUs. CSV/TSV exports include all columns.</p>`;
+       <p class="hint">${stdNote} Switch in DU settings → "Compare DU UCL against". Acres disturbed = hand-excavate + excavate&amp;consolidate + amend surface. Residual mean Hg is area-weighted. CSV/TSV exports include all columns.</p>`;
   }
   function compareToDelim(sep){
     const rows = compareTableRows();
+    // Export always includes BOTH pass-count columns regardless of UI selection,
+    // so the recipient has the full picture for FS / mini-FS write-ups.
     const headers = ['Scenario','# DUs','Acres total','Acres disturbed','Disturbed vol (yd3)',
       'Hg removed (kg)','Hg stabilized (kg)','Residual mean Hg (mg/kg)',
+      'PASS vs ROD (204)','PASS vs Background (58)',
       ...DU_ACTIONS.map(a => `Ac: ${a.key}`),
       'Issues'];
     const lines = [headers.join(sep)];
@@ -2925,6 +3174,7 @@ function fitToData(){
         Math.round(r.volumeDisturbed_yd3),
         r.HgMassRemoved_kg.toFixed(3), r.HgMassStabilized_kg.toFixed(3),
         r.residualMeanHg!=null ? r.residualMeanHg.toFixed(2) : '',
+        `${r.passROD}/${r.nDUs}`, `${r.passPMB}/${r.nDUs}`,
         ...DU_ACTIONS.map(a => (r.acresByAction[a.key]||0).toFixed(3)),
         r.issues.join('; '),
       ];
@@ -3036,14 +3286,16 @@ function fitToData(){
       colorByAction: typeof savedDu.colorByAction === 'boolean' ? savedDu.colorByAction : def.colorByAction,
       defaultBulkDensity: typeof savedDu.defaultBulkDensity === 'number' ? savedDu.defaultBulkDensity : def.defaultBulkDensity,
       includeEA: typeof savedDu.includeEA === 'boolean' ? savedDu.includeEA : def.includeEA,
+      compareStandard: ['ROD','PMB','BOTH'].includes(savedDu.compareStandard) ? savedDu.compareStandard : def.compareStandard,
       autoMark: false,
     };
     if(!STATE.du.scenarios.find(s => s.id === 'unassigned')){
       STATE.du.scenarios.unshift({ id:'unassigned', name:'Unassigned', notes:'', readonly:true });
     }
-    const cb = document.getElementById('duColorByAction'); if(cb) cb.checked = STATE.du.colorByAction;
-    const ie = document.getElementById('duIncludeEA');     if(ie) ie.checked = STATE.du.includeEA;
-    const bd = document.getElementById('duBulkDensity');   if(bd) bd.value   = STATE.du.defaultBulkDensity;
+    const cb = document.getElementById('duColorByAction');   if(cb) cb.checked = STATE.du.colorByAction;
+    const ie = document.getElementById('duIncludeEA');       if(ie) ie.checked = STATE.du.includeEA;
+    const bd = document.getElementById('duBulkDensity');     if(bd) bd.value   = STATE.du.defaultBulkDensity;
+    const cs = document.getElementById('duCompareStandard'); if(cs) cs.value   = STATE.du.compareStandard;
     refreshAllDUStyles();
   };
 
@@ -3066,6 +3318,14 @@ function fitToData(){
   $du('duBulkDensity').addEventListener('change', e => {
     const v = parseFloat(e.target.value); if(v > 0) STATE.du.defaultBulkDensity = v;
     refreshDUUI(); eachDU(l => attachShapeInfo(l)); scheduleAutosave();
+  });
+  $du('duCompareStandard').addEventListener('change', e => {
+    STATE.du.compareStandard = e.target.value;       // 'ROD' | 'PMB' | 'BOTH'
+    refreshDUUI();
+    eachDU(l => attachShapeInfo(l));                 // re-render every DU popup so its badge(s) reflect the new standard
+    // re-render the comparison table if it was previously rendered
+    const out = document.getElementById('duCompareOut'); if(out && out.innerHTML) renderCompareTable();
+    scheduleAutosave();
   });
   $du('duActiveScenario').addEventListener('change', e => {
     STATE.du.activeScenarioId = e.target.value;
