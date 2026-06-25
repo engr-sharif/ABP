@@ -65,15 +65,42 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 @keyframes pulseBadge{0%,100%{opacity:1}50%{opacity:.55}}
 #topbar select{background:#2b3a4d;color:#fff;border:1px solid #3a4a5c;border-radius:4px;padding:4px 6px;font-size:12px}
 
-/* Left panel */
-#panel{position:absolute;top:46px;left:0;bottom:0;width:330px;background:var(--panel);
-  border-right:1px solid var(--line);overflow-y:auto;z-index:1100;transition:transform .2s ease;padding-bottom:40px}
-#panel.collapsed{transform:translateX(-330px)}
-#panelToggle{position:absolute;top:50%;margin-top:-32px;left:330px;z-index:1101;background:var(--panel);
-  border:1px solid var(--line);border-left:none;border-radius:0 8px 8px 0;width:24px;height:64px;
-  cursor:pointer;font-size:15px;line-height:64px;text-align:center;transition:left .25s var(--ease),background .2s;color:var(--muted)}
-#panelToggle:hover{background:var(--accent);color:#fff}
-#panel.collapsed ~ #panelToggle{left:0}
+/* Tab bar (top, pill-style) */
+#tabBar{position:absolute;top:46px;left:0;right:0;height:38px;background:var(--panel);
+  border-bottom:1px solid var(--line);display:flex;align-items:center;gap:4px;padding:0 10px;
+  z-index:1150;overflow-x:auto;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.tab-btn{background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:600;
+  letter-spacing:.3px;padding:6px 16px;border-radius:999px;cursor:pointer;white-space:nowrap;
+  transition:background .15s,color .15s;flex:none}
+.tab-btn:hover{background:rgba(43,140,190,.12);color:var(--ink)}
+.tab-btn.active{background:var(--accent);color:#fff;box-shadow:0 1px 3px rgba(43,140,190,.4)}
+body.dark .tab-btn:hover{background:rgba(43,140,190,.22)}
+#tabPanelClose{margin-left:auto;background:transparent;border:none;color:var(--muted);cursor:pointer;
+  font-size:16px;padding:5px 10px;border-radius:4px;display:none;line-height:1;flex:none}
+#tabPanelClose:hover{background:rgba(0,0,0,.06);color:var(--ink)}
+body.dark #tabPanelClose:hover{background:rgba(255,255,255,.08)}
+body.tab-open #tabPanelClose{display:inline-block}
+
+/* Left panel — pushed down for tab bar; hidden by default, slides in when a tab is active */
+#panel{position:absolute;top:84px;left:0;bottom:0;width:330px;background:var(--panel);
+  border-right:1px solid var(--line);overflow-y:auto;z-index:1100;
+  transform:translateX(-340px);transition:transform .22s var(--ease);padding-bottom:40px}
+body.tab-open #panel{transform:translateX(0)}
+#panelToggle{display:none}   /* tab bar's close button replaces it */
+
+/* Tab panes — only the active one renders */
+.tab-pane{display:none}
+.tab-pane.active{display:block}
+
+/* Inside a tab, sections are always open and their h2 is a non-clickable label/divider */
+.tab-pane .section{border-bottom:1px solid var(--line)}
+.tab-pane .section:last-child{border-bottom:none}
+.tab-pane .section > h2{cursor:default;pointer-events:none;padding-top:12px}
+.tab-pane .section > h2 .chev{display:none}
+.tab-pane .section.closed .body{max-height:3000px;opacity:1;padding:10px 12px}
+/* When a tab-pane has only one section, hide its h2 — the tab name already labels it */
+.tab-pane > .section:first-child:last-child > h2{display:none}
+.tab-pane > .section:first-child:last-child > .body{padding-top:14px}
 
 .section{border-bottom:1px solid var(--line)}
 .section > h2{margin:0;padding:9px 12px;font-size:12px;font-weight:600;text-transform:uppercase;
@@ -153,8 +180,8 @@ select:focus,input[type=text]:focus,input[type=number]:focus{border-color:var(--
 .hint{font-size:11px;color:var(--muted);margin:4px 0}
 
 /* Map */
-#map{position:absolute;top:46px;left:0;right:0;bottom:0;z-index:1}
-.with-panel #map{left:330px}
+#map{position:absolute;top:84px;left:0;right:0;bottom:0;z-index:1;transition:left .22s var(--ease)}   /* top: 46 (topbar) + 38 (tabBar) */
+body.tab-open #map{left:330px}
 
 /* Legend */
 #legend{position:absolute;bottom:22px;right:12px;z-index:1000;background:var(--overlay);color:var(--ink);
@@ -231,7 +258,7 @@ body.dark .popup-bl .hi-badge{color:#0e1217}
 #coords{position:absolute;bottom:0;left:340px;z-index:1000;background:var(--overlay);
   border:1px solid var(--line);border-bottom:none;border-left:none;border-radius:0 6px 0 0;
   padding:2px 8px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;transition:left .25s var(--ease)}
-body:not(.with-panel) #coords{left:0}
+body:not(.tab-open) #coords{left:0}
 
 /* author watermark (also captured in exported figures) */
 #watermark{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);z-index:1000;
@@ -250,7 +277,7 @@ body:not(.with-panel) #coords{left:0}
 
 /* ============================== PRINT LAYOUT (figure templates) ============================== */
 @media print{
-  #topbar,#panel,#panelToggle,#coords,
+  #topbar,#tabBar,#panel,#panelToggle,#coords,
   .leaflet-control-zoom,.leaflet-pm-toolbar,.leaflet-control-attribution,
   .leaflet-sbs-range{ display:none !important; }
   #map{ top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; }
@@ -260,7 +287,7 @@ body:not(.with-panel) #coords{left:0}
 }
 </style>
 </head>
-<body class="with-panel">
+<body><!-- 'tab-open' class is toggled by activateTab() — no tab active on first load = clean map -->
 
 <!-- ============================== TOP BAR ============================== -->
 <div id="topbar">
@@ -284,7 +311,19 @@ body:not(.with-panel) #coords{left:0}
 </div>
 
 <!-- ============================== LEFT PANEL ============================== -->
+<nav id="tabBar" role="tablist">
+  <button class="tab-btn" data-tab="view"   role="tab">View</button>
+  <button class="tab-btn" data-tab="filter" role="tab">Filter</button>
+  <button class="tab-btn" data-tab="draw"   role="tab">Draw</button>
+  <button class="tab-btn" data-tab="du"     role="tab">Decision Units</button>
+  <button class="tab-btn" data-tab="stats"  role="tab">Stats</button>
+  <button class="tab-btn" data-tab="export" role="tab">Export</button>
+  <button id="tabPanelClose" title="Hide panel — click any tab to reopen">✕</button>
+</nav>
+
 <div id="panel">
+
+  <div class="tab-pane" data-tab="view">
 
   <div class="section closed" data-sec="display">
     <h2>Display &amp; Color <span class="chev">▾</span></h2>
@@ -378,6 +417,10 @@ body:not(.with-panel) #coords{left:0}
     </div>
   </div>
 
+  </div><!-- /tab-pane view -->
+
+  <div class="tab-pane" data-tab="draw">
+
   <div class="section closed" data-sec="advanced">
     <h2>Advanced (SOTA) <span class="chev">▾</span></h2>
     <div class="body">
@@ -460,6 +503,10 @@ body:not(.with-panel) #coords{left:0}
     </div>
   </div>
 
+  </div><!-- /tab-pane draw -->
+
+  <div class="tab-pane" data-tab="filter">
+
   <div class="section closed" data-sec="filters">
     <h2>Filters <span class="chev">▾</span></h2>
     <div class="body">
@@ -488,6 +535,10 @@ body:not(.with-panel) #coords{left:0}
       <button class="btn" id="resetFilters" style="margin-top:8px">Reset filters</button>
     </div>
   </div>
+
+  </div><!-- /tab-pane filter -->
+
+  <div class="tab-pane" data-tab="du">
 
   <!-- SECTION — DECISION UNITS & SCENARIOS (HTML) -->
   <div class="section closed" data-sec="du">
@@ -560,6 +611,10 @@ body:not(.with-panel) #coords{left:0}
     </div>
   </div>
 
+  </div><!-- /tab-pane du -->
+
+  <div class="tab-pane" data-tab="stats">
+
   <div class="section closed" data-sec="stats">
     <h2>Live Stats <span class="chev">▾</span></h2>
     <div class="body" id="statsBody"></div>
@@ -574,6 +629,10 @@ body:not(.with-panel) #coords{left:0}
       <canvas id="omDeepChart" height="220"></canvas>
     </div>
   </div>
+
+  </div><!-- /tab-pane stats -->
+
+  <div class="tab-pane" data-tab="export">
 
   <div class="section closed" data-sec="io">
     <h2>Export &amp; Session <span class="chev">▾</span></h2>
@@ -621,6 +680,8 @@ body:not(.with-panel) #coords{left:0}
       <div id="sessionMsg" class="hint"></div>
     </div>
   </div>
+
+  </div><!-- /tab-pane export -->
 
 </div>
 <div id="panelToggle" title="Collapse / expand panel">‹</div>
@@ -679,6 +740,7 @@ const STATE = {
   showLabels:false, logScale:true,
   showPoints:true,
   ndRule:'zero',                            // 'zero' | 'halfdl' | 'dl' — non-detect substitution rule
+  activeTab:null,                           // null = no tab open (clean map); else 'view'|'filter'|'draw'|'du'|'stats'|'export'
   filters:{ datasets:['1','2','EA'], sampled:'all', exceed:'all', depth:'all', thr:0 }
 };
 
@@ -1349,13 +1411,32 @@ document.getElementById('ndRule').addEventListener('change', e=>{
   scheduleAutosave();
 });
 
-// panel collapse
-document.getElementById('panelToggle').addEventListener('click', ()=>{
-  const panel=document.getElementById('panel');
-  panel.classList.toggle('collapsed');
-  document.body.classList.toggle('with-panel', !panel.classList.contains('collapsed'));
-  document.getElementById('panelToggle').textContent = panel.classList.contains('collapsed') ? '›' : '‹';
-  setTimeout(()=>map.invalidateSize(), 220);
+// ---- Tab bar: pill tabs at top swap which panel is visible ----------------
+function activateTab(name){
+  const btns  = document.querySelectorAll('.tab-btn');
+  const panes = document.querySelectorAll('.tab-pane');
+  const cur   = document.querySelector('.tab-btn.active');
+  // toggle off if the clicked tab is already active -> hide panel entirely (clean map)
+  if(cur && cur.dataset.tab === name){
+    cur.classList.remove('active');
+    panes.forEach(p => p.classList.remove('active'));
+    document.body.classList.remove('tab-open');
+    STATE.activeTab = null;
+  } else {
+    btns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    panes.forEach(p => p.classList.toggle('active', p.dataset.tab === name));
+    document.body.classList.add('tab-open');
+    STATE.activeTab = name;
+  }
+  setTimeout(() => { if(typeof map !== 'undefined' && map) map.invalidateSize(); }, 240);
+  scheduleAutosave();
+}
+document.querySelectorAll('.tab-btn').forEach(b => {
+  b.addEventListener('click', () => activateTab(b.dataset.tab));
+});
+document.getElementById('tabPanelClose').addEventListener('click', () => {
+  const cur = document.querySelector('.tab-btn.active');
+  if(cur) activateTab(cur.dataset.tab);   // clicking close = clicking the active tab again
 });
 // section collapse
 document.querySelectorAll('.section > h2').forEach(h=>{
@@ -1765,7 +1846,7 @@ function download(name, content, mime){
 }
 function expFileName(def){ return ($('expName').value||def).trim().replace(/[^\w.-]+/g,'_'); }
 function exportIgnore(n){
-  if(['panel','panelToggle','topbar','coords'].includes(n.id)) return true;
+  if(['panel','panelToggle','tabBar','topbar','coords','tabPanelClose'].includes(n.id)) return true;
   const cl = n.classList;
   if(cl && (cl.contains('leaflet-control-zoom')||cl.contains('leaflet-pm-toolbar')||cl.contains('leaflet-pm-toolbar-vertical'))) return true;
   const inc = [...document.querySelectorAll('.expInc:checked')].map(c=>c.value);
@@ -1888,6 +1969,7 @@ function sessionData(){
   return {
     colorBy:STATE.colorBy, analyte:STATE.analyte,
     ndRule:STATE.ndRule,
+    activeTab:STATE.activeTab,
     showLabels:STATE.showLabels, logScale:STATE.logScale, showPoints:STATE.showPoints,
     filters:STATE.filters, layers:STATE.layers,
     base:$('baseSelect').value,
@@ -1941,6 +2023,10 @@ function loadSession(silent){
   if(d.du && typeof mergeDUStateFromSession==='function') mergeDUStateFromSession(d.du);   // SECTION — DECISION UNITS & SCENARIOS
   if(typeof refreshDUUI==='function') refreshDUUI();
   syncControlVisibility(); applyDisplay(); applyFilters(); updateGrid();
+  // restore the last-active tab (null = clean map with no panel open)
+  if(d.activeTab && document.querySelector('.tab-btn[data-tab="'+d.activeTab+'"]')){
+    activateTab(d.activeTab);
+  }
   if(!silent) $('sessionMsg').textContent='Session loaded.';
 }
 
