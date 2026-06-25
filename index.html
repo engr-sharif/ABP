@@ -86,6 +86,52 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
   transition:max-height .3s var(--ease),opacity .25s var(--ease),padding .25s var(--ease)}
 .section.closed .body{max-height:0;padding-top:0;padding-bottom:0;opacity:0}
 
+/* SECTION — DECISION UNITS & SCENARIOS (CSS) ----------------------------- */
+.du-sub{border-top:1px dashed var(--line);margin-top:6px}
+.du-sub:first-child{border-top:none;margin-top:0}
+.du-sub > h3{margin:0;padding:7px 4px 6px 4px;font-size:11px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.4px;color:var(--muted);cursor:pointer;display:flex;justify-content:space-between;
+  align-items:center;user-select:none}
+.du-sub > h3:hover{color:var(--ink)}
+.du-sub > h3 .chev{transition:transform .15s ease;font-size:10px}
+.du-sub.closed > h3 .chev{transform:rotate(-90deg)}
+.du-sub > .body{padding:2px 4px 8px 4px;max-height:3000px;overflow:hidden;
+  transition:max-height .3s var(--ease),opacity .25s var(--ease)}
+.du-sub.closed > .body{max-height:0;padding:0;opacity:0}
+.du-action-Leave{background:#1a9641 !important;border-color:#1a9641 !important}
+.du-action-Amend{background:#2c7bb6 !important;border-color:#2c7bb6 !important}
+.du-action-HandExcavate{background:#fdae61 !important;border-color:#d68a3a !important}
+.du-action-ExcavateConsolidate{background:#d7191c !important;border-color:#d7191c !important}
+.du-action-Undecided{background:#9e9e9e !important;border-color:#9e9e9e !important}
+.du-list-item{display:flex;justify-content:space-between;align-items:center;padding:5px 7px;margin:3px 0;
+  border:1px solid var(--line);border-radius:5px;font-size:11px;background:var(--card);cursor:pointer}
+.du-list-item:hover{background:#f0f4ff}
+.du-list-item.active{outline:2px solid #2b8cbe}
+.du-list-item .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.du-pass{display:inline-block;padding:1px 8px;border-radius:3px;font-weight:700;font-size:10px;background:#1a9641;color:#fff}
+.du-act{display:inline-block;padding:1px 8px;border-radius:3px;font-weight:700;font-size:10px;background:#d7191c;color:#fff}
+.du-tbd{display:inline-block;padding:1px 8px;border-radius:3px;font-weight:700;font-size:10px;background:#9e9e9e;color:#fff}
+.du-report{font-size:11.5px;margin-top:6px;border-top:1px solid var(--line);padding-top:6px}
+.du-report table{width:100%;border-collapse:collapse;margin:4px 0;font-size:11px}
+.du-report th,.du-report td{padding:2px 5px;text-align:right;border-bottom:1px dotted var(--line)}
+.du-report th:first-child,.du-report td:first-child{text-align:left}
+.du-report .over{color:#d7191c;font-weight:700}
+.du-method-note{font-size:10px;color:var(--muted);font-style:italic;margin-top:6px;line-height:1.35}
+.du-warn{background:#fff3cd;border:1px solid #ffe69c;color:#664d03;padding:6px 8px;border-radius:4px;font-size:11px;margin:6px 0}
+.du-scenario-row{display:flex;gap:6px;align-items:center;margin:4px 0}
+.du-scenario-row input{flex:1}
+.du-compare-table{width:100%;border-collapse:collapse;font-size:10.5px;margin-top:8px}
+.du-compare-table th,.du-compare-table td{padding:3px 5px;border:1px solid var(--line);text-align:right;white-space:nowrap}
+.du-compare-table th{background:#fafbfc;text-align:center;font-weight:600}
+.du-compare-table tr.active{background:#fff7e0}
+.du-compare-table td.disturbed{background:#fbe4d5;font-weight:600}
+.du-mini-btn{padding:2px 6px;font-size:10px;border:1px solid var(--line);background:var(--card);border-radius:3px;cursor:pointer}
+.du-mini-btn:hover{background:#e8eef5}
+body.dark .du-list-item{background:#1f2937}
+body.dark .du-list-item:hover{background:#27324a}
+body.dark .du-compare-table th{background:#1f2937}
+body.dark .du-warn{background:#3d2c00;border-color:#5c4400;color:#ffd966}
+
 label.field{display:block;margin:7px 0 3px;font-size:11px;font-weight:600;color:var(--muted)}
 select,input[type=text],input[type=number]{width:100%;padding:5px 7px;border:1px solid var(--line);
   border-radius:5px;font-size:12px;background:#fff;color:var(--ink)}
@@ -440,6 +486,77 @@ body:not(.with-panel) #coords{left:0}
         <button class="btn" id="searchBtn" style="flex:none">Go</button>
       </div>
       <button class="btn" id="resetFilters" style="margin-top:8px">Reset filters</button>
+    </div>
+  </div>
+
+  <!-- SECTION — DECISION UNITS & SCENARIOS (HTML) -->
+  <div class="section closed" data-sec="du">
+    <h2>Decision Units &amp; Scenarios <span class="chev">▾</span></h2>
+    <div class="body">
+
+      <div class="du-sub" id="duSub-units">
+        <h3>Decision Units <span class="chev">▾</span></h3>
+        <div class="body">
+          <label class="checkrow"><input type="checkbox" id="duAutoMark"> Mark next drawn shape as DU</label>
+          <label class="checkrow"><input type="checkbox" id="duColorByAction" checked> Color DUs by action</label>
+          <label class="field">DUs in active scenario</label>
+          <div id="duList" style="font-size:11px;color:var(--muted)">No DUs yet — draw a polygon, circle, or rectangle and click "Mark as DU" in its popup.</div>
+        </div>
+      </div>
+
+      <div class="du-sub closed" id="duSub-scenarios">
+        <h3>Scenarios <span class="chev">▾</span></h3>
+        <div class="body">
+          <label class="field">Active scenario</label>
+          <select id="duActiveScenario"></select>
+          <div class="row" style="margin-top:6px;gap:4px;flex-wrap:wrap">
+            <button class="btn" id="duNewScenario" style="flex:1;min-width:60px">New</button>
+            <button class="btn" id="duRenameScenario" style="flex:1;min-width:60px">Rename</button>
+            <button class="btn" id="duDuplicateScenario" style="flex:1;min-width:60px">Duplicate</button>
+            <button class="btn" id="duDeleteScenario" style="flex:1;min-width:60px">Delete</button>
+          </div>
+          <p class="hint" style="margin-top:6px">Switching the active scenario shows only that scenario's DUs on the map. The "Unassigned" scenario always exists and holds any DU whose scenario was deleted.</p>
+        </div>
+      </div>
+
+      <div class="du-sub closed" id="duSub-compare">
+        <h3>Compare scenarios <span class="chev">▾</span></h3>
+        <div class="body">
+          <div class="row" style="gap:4px;flex-wrap:wrap">
+            <button class="btn" id="duCompareRender" style="flex:1;min-width:80px">Refresh table</button>
+            <button class="btn" id="duCompareCopy" style="flex:1;min-width:80px">Copy TSV</button>
+            <button class="btn" id="duCompareCSV" style="flex:1;min-width:80px">Download CSV</button>
+          </div>
+          <div id="duCompareOut" style="margin-top:8px;overflow-x:auto"></div>
+        </div>
+      </div>
+
+      <div class="du-sub closed" id="duSub-hotspot">
+        <h3>Hot-spot DU generator <span class="chev">▾</span></h3>
+        <div class="body">
+          <label class="field">Hg threshold (mg/kg)</label>
+          <input type="number" id="duHotspotThr" value="1000" min="1" step="1">
+          <label class="field">Minimum polygon area (m²)</label>
+          <input type="number" id="duHotspotMinArea" value="50" min="1" step="1">
+          <button class="btn" id="duHotspotRun" style="margin-top:8px;width:100%">Generate hot-spot DUs</button>
+          <p class="hint">Runs the IDW delineation at the chosen Hg threshold and converts each contour polygon into a DU (action = <i>Hand-excavate hot spot</i>) assigned to the active scenario.</p>
+        </div>
+      </div>
+
+      <div class="du-sub closed" id="duSub-settings">
+        <h3>DU settings <span class="chev">▾</span></h3>
+        <div class="body">
+          <label class="field">Default bulk density (kg/m³)</label>
+          <input type="number" id="duBulkDensity" value="1500" min="800" max="2200" step="50">
+          <label class="checkrow"><input type="checkbox" id="duIncludeEA" checked> Include EA historical in DU populations</label>
+          <p class="du-method-note">
+            <b>UCL method.</b> Per-DU stats show <b>Student-t UCL</b> and <b>Chebyshev UCL</b> on raw values (½ DL substitution for non-detects). PASS/ACT uses the Chebyshev (conservative).
+            <br><b>Screening only.</b> Formal ROD compliance is per Exposure Unit via ProUCL. Per-DU UCL is a screening aid, not a ROD compliance test.
+            <br><b>Sb &amp; Tl.</b> When 100% of in-DU samples are non-detect, the report shows "All ND at MDL X, &lt; ROD Y — no further action indicated" instead of stats.
+          </p>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -1549,16 +1666,24 @@ function shapeStats(layer){
 function attachShapeInfo(layer){
   const info = shapeStats(layer);
   if(info.kind!=='Annotation'){
-    if(layer.getPopup()) layer.setPopupContent(info.html); else layer.bindPopup(info.html);
-    $('measureOut').innerHTML = info.html;
+    // SECTION — DECISION UNITS & SCENARIOS: when a layer is a DU, append the report card and the toggle button
+    let html = info.html;
+    if(typeof duPopupAddendum === 'function') html += duPopupAddendum(layer, info);
+    if(layer.getPopup()) layer.setPopupContent(html); else layer.bindPopup(html);
+    $('measureOut').innerHTML = html;
   }
 }
 map.on('pm:create', e=>{
   const layer = e.layer;
   applyShapeStyle(layer);
   drawnItems.addLayer(layer);
+  // SECTION — DECISION UNITS & SCENARIOS: auto-promote to DU if the toggle is on
+  if(typeof maybeAutoPromoteToDU === 'function') maybeAutoPromoteToDU(layer);
   attachShapeInfo(layer);
-  layer.on('pm:edit pm:dragend pm:markerdragend pm:update', ()=>{ attachShapeInfo(layer); scheduleAutosave(); });
+  layer.on('pm:edit pm:dragend pm:markerdragend pm:update', ()=>{
+    if(typeof onShapeEdited === 'function') onShapeEdited(layer);
+    attachShapeInfo(layer); scheduleAutosave();
+  });
   scheduleAutosave();
 });
 map.on('pm:remove', ()=>scheduleAutosave());
@@ -1573,6 +1698,7 @@ function shapesToGeoJSON(){
     if(l.options) gj.properties.style = { color:l.options.color, weight:l.options.weight,
       fillColor:l.options.fillColor, fillOpacity:l.options.fillOpacity, dashArray:l.options.dashArray };
     if(l.pm && l.pm._textMarker && l.getTooltip) gj.properties.text = l.getTooltip() ? l.getTooltip().getContent() : '';
+    if(l.duMeta) gj.properties.du = l.duMeta;     // SECTION — DECISION UNITS & SCENARIOS: persist DU metadata
     fc.features.push(gj);
   });
   return fc;
@@ -1590,6 +1716,7 @@ function loadShapesGeoJSON(gj){
       layer = L.geoJSON(ft).getLayers()[0];
     }
     if(layer.setStyle && pr.style) layer.setStyle(pr.style);
+    if(pr.du){ layer.duMeta = pr.du; }            // SECTION — DECISION UNITS & SCENARIOS: restore DU metadata (styling re-applied by mergeDUStateFromSession at end of loadSession)
     drawnItems.addLayer(layer);
     attachShapeInfo(layer);
     layer.on('pm:edit pm:dragend pm:update', ()=>{ attachShapeInfo(layer); scheduleAutosave(); });
@@ -1769,7 +1896,8 @@ function sessionData(){
     showTitleBlock:$('showTitleBlock').checked,
     dark:document.body.classList.contains('dark'),
     titlePos:(function(){ const tb=$('titleBlock'); return tb.classList.contains('placed')?{left:tb.style.left,top:tb.style.top}:null; })(),
-    shapes:shapesToGeoJSON()
+    shapes:shapesToGeoJSON(),
+    du: (typeof STATE!=='undefined' && STATE.du) ? STATE.du : null  // SECTION — DECISION UNITS & SCENARIOS
   };
 }
 function saveSession(){
@@ -1810,6 +1938,8 @@ function loadSession(silent){
   if(d.titlePos && d.titlePos.left){ const tb=$('titleBlock'); tb.classList.add('placed'); tb.style.left=d.titlePos.left; tb.style.top=d.titlePos.top; tb.style.right='auto'; }
   applyTheme(!!d.dark);
   drawnItems.clearLayers(); loadShapesGeoJSON(d.shapes);
+  if(d.du && typeof mergeDUStateFromSession==='function') mergeDUStateFromSession(d.du);   // SECTION — DECISION UNITS & SCENARIOS
+  if(typeof refreshDUUI==='function') refreshDUUI();
   syncControlVisibility(); applyDisplay(); applyFilters(); updateGrid();
   if(!silent) $('sessionMsg').textContent='Session loaded.';
 }
@@ -2138,6 +2268,742 @@ function fitToData(){
   const pts = DATA.features.map(f=>[f.geometry.coordinates[1], f.geometry.coordinates[0]]);
   map.fitBounds(L.latLngBounds(pts), { padding:[40,40] });
 }
+/* =========================================================================
+   SECTION — DECISION UNITS & SCENARIOS
+   ========================================================================= */
+(function(){
+  'use strict';
+
+  // ---- constants ---------------------------------------------------------
+  const DU_ACTIONS = [
+    { key:'Leave',               label:'Leave / revegetate',           color:'#1a9641', disturbs:false },
+    { key:'Amend',               label:'In-place amendment (MercLok)', color:'#2c7bb6', disturbs:true  },
+    { key:'HandExcavate',        label:'Hand-excavate hot spot',       color:'#fdae61', disturbs:true, removes:true },
+    { key:'ExcavateConsolidate', label:'Excavate & consolidate',       color:'#d7191c', disturbs:true, consolidates:true },
+    { key:'Undecided',           label:'Undecided',                    color:'#9e9e9e', disturbs:false },
+  ];
+  const DU_ACTION_LOOKUP = {};
+  DU_ACTIONS.forEach(a => DU_ACTION_LOOKUP[a.key] = a);
+  const DU_SCHEMA      = 'du-v1';
+  const DU_SCEN_SCHEMA = 'duscen-v1';
+  const DEFAULT_BULK_DENSITY = 1500;        // kg/m³
+  // Student-t critical value (alpha=0.05, one-sided), index = dof = n-1, valid 1..29
+  const T95 = [
+    null, 6.314, 2.920, 2.353, 2.132, 2.015, 1.943, 1.895, 1.860, 1.833,
+    1.812, 1.796, 1.782, 1.771, 1.761, 1.753, 1.746, 1.740, 1.734, 1.729,
+    1.725, 1.721, 1.717, 1.714, 1.711, 1.708, 1.706, 1.703, 1.701, 1.699
+  ];
+  const Z95 = 1.645;
+  const CHEB_K_95 = Math.sqrt(1/0.05);      // ≈ 4.472, Chebyshev k for 95% UCL
+
+  // ---- state init (additive — does not touch existing STATE fields) ------
+  STATE.du = STATE.du || {
+    schema: DU_SCEN_SCHEMA,
+    activeScenarioId: 'unassigned',
+    scenarios: [
+      { id:'unassigned', name:'Unassigned',
+        notes:'(holds DUs whose scenario was deleted; cannot be deleted)', readonly:true }
+    ],
+    colorByAction: true,
+    defaultBulkDensity: DEFAULT_BULK_DENSITY,
+    includeEA: true,
+    autoMark: false,
+  };
+
+  function genId(prefix){ return prefix + '_' + Math.random().toString(36).slice(2, 9); }
+
+  // ---- DU helpers --------------------------------------------------------
+  function isDU(layer){ return !!(layer && layer.duMeta); }
+  function isVisibleDU(layer){
+    return isDU(layer) && layer.duMeta.scenarioId === STATE.du.activeScenarioId;
+  }
+  function eachDU(fn){       drawnItems.eachLayer(l => { if(isDU(l)) fn(l); }); }
+  function eachActiveDU(fn){ drawnItems.eachLayer(l => { if(isVisibleDU(l)) fn(l); }); }
+  function findDUById(id){
+    let found = null;
+    drawnItems.eachLayer(l => { if(isDU(l) && l.duMeta.id === id) found = l; });
+    return found;
+  }
+  function activeScenario(){
+    return STATE.du.scenarios.find(s => s.id === STATE.du.activeScenarioId) || STATE.du.scenarios[0];
+  }
+  function countDUsInScenario(sid){
+    let c = 0; eachDU(l => { if(l.duMeta.scenarioId === sid) c++; }); return c;
+  }
+  function layerToPoly(layer){
+    if(layer instanceof L.Circle){
+      const r = layer.getRadius(), c = layer.getLatLng();
+      return turf.circle([c.lng, c.lat], r/1000, { units:'kilometers', steps:64 });
+    }
+    if(layer instanceof L.Polygon) return layer.toGeoJSON();
+    return null;
+  }
+  function layerAreaM2(layer){
+    const p = layerToPoly(layer);
+    return p ? turf.area(p) : 0;
+  }
+
+  // ---- UCL math (Student-t & Chebyshev on raw, ½ DL substitution) --------
+  function effValuesForUCL(samples, analyte){
+    const out = []; let nDetect = 0, nND = 0;
+    samples.forEach(f => {
+      const p = f.properties;
+      const v = p[analyte], dl = p[analyte+'_dl'];
+      if(typeof v === 'number' && isFinite(v)){ out.push(v); nDetect++; }
+      else if(typeof dl === 'number' && isFinite(dl)){ out.push(dl/2); nND++; }
+    });
+    return { vals: out, nDetect, nND };
+  }
+  function tCrit(n){
+    if(n <= 1) return null;
+    if(n - 1 < T95.length) return T95[n-1];
+    return Z95;
+  }
+  function studentTUCL(vals){
+    const n = vals.length; if(n < 2) return null;
+    const mean = vals.reduce((a,b)=>a+b, 0)/n;
+    const variance = vals.reduce((a,b)=>a + (b-mean)*(b-mean), 0)/(n-1);
+    const sd = Math.sqrt(Math.max(0, variance));
+    return mean + tCrit(n) * sd / Math.sqrt(n);
+  }
+  function chebyshevUCL(vals){
+    const n = vals.length; if(n < 2) return null;
+    const mean = vals.reduce((a,b)=>a+b, 0)/n;
+    const variance = vals.reduce((a,b)=>a + (b-mean)*(b-mean), 0)/(n-1);
+    const sd = Math.sqrt(Math.max(0, variance));
+    return mean + CHEB_K_95 * sd / Math.sqrt(n);
+  }
+
+  // ---- numeric stats over a DU polygon -----------------------------------
+  function pointsInsideDU(layer){
+    const poly = layerToPoly(layer); if(!poly) return [];
+    return DATA.features.filter(f => {
+      if(!f.properties.sampled) return false;
+      if(!STATE.du.includeEA && f.properties.dataset === 'EA') return false;
+      return turf.booleanPointInPolygon(turf.point(f.geometry.coordinates), poly);
+    });
+  }
+  function datasetBreakdown(samples){
+    const b = {'1':0, '2':0, 'EA':0};
+    samples.forEach(f => { const k = f.properties.dataset; if(b[k]!=null) b[k]++; });
+    return b;
+  }
+  function duStats(layer){
+    const samples = pointsInsideDU(layer);
+    const n = samples.length;
+    const byAnalyte = {};
+    ANALYTES.forEach(a => {
+      const { vals, nDetect, nND } = effValuesForUCL(samples, a);
+      if(vals.length === 0){
+        byAnalyte[a] = { n:0, nDetect:0, nND:0, allND:false, hasResult:false };
+        return;
+      }
+      const allND = nDetect === 0;
+      const mean = vals.reduce((x,y)=>x+y,0)/vals.length;
+      const max  = Math.max(...vals);
+      const min  = Math.min(...vals);
+      const rod  = CRITERIA.ROD[a];
+      const pmb  = (CRITERIA.PMB || {})[a];
+      const overROD = samples.filter(f => {
+        const v = f.properties[a]; return (typeof v==='number' && isFinite(v) && v > rod);
+      }).length;
+      const overPMB = (typeof pmb === 'number') ? samples.filter(f => {
+        const v = f.properties[a]; return (typeof v==='number' && isFinite(v) && v > pmb);
+      }).length : null;
+      const dls = samples.map(f => f.properties[a+'_dl']).filter(d => typeof d==='number' && isFinite(d));
+      byAnalyte[a] = {
+        n: vals.length, nDetect, nND, allND, hasResult:true,
+        mean, max, min,
+        uclT: studentTUCL(vals),
+        uclC: chebyshevUCL(vals),
+        pctOverROD: 100*overROD/Math.max(1, n),
+        pctOverPMB: overPMB!=null ? 100*overPMB/Math.max(1, n) : null,
+        rod, pmb,
+        mdl: dls.length ? Math.max(...dls) : null,
+      };
+    });
+    const meta = layer.duMeta || {};
+    const depthFt = meta.depthFt || 0.5;
+    const bulkDensity = (typeof meta.bulkDensity === 'number' && meta.bulkDensity > 0)
+      ? meta.bulkDensity : STATE.du.defaultBulkDensity;
+    const m2 = layerAreaM2(layer);
+    const depth_m = depthFt * 0.3048;
+    const soilMassKg = m2 * depth_m * bulkDensity;
+    const meanHg = (byAnalyte.Hg && byAnalyte.Hg.hasResult) ? byAnalyte.Hg.mean : 0;
+    return {
+      n, samples, byAnalyte,
+      area_m2: m2, area_ft2: m2*10.7639104, area_ac: m2/4046.8564224,
+      depthFt, bulkDensity,
+      volume_yd3: (m2*10.7639104) * depthFt / 27,
+      soilMass_kg: soilMassKg,
+      HgMass_kg: soilMassKg * meanHg / 1e6,
+      datasetBreakdown: datasetBreakdown(samples),
+    };
+  }
+
+  function duCall(stats){
+    const Hg = stats.byAnalyte.Hg;
+    if(!Hg || !Hg.hasResult) return { call:'TBD', label:'n=0 — no samples', cls:'du-tbd' };
+    if(Hg.n < 3)             return { call:'TBD', label:`n=${Hg.n} — too few for UCL`, cls:'du-tbd' };
+    if(Hg.uclC == null)      return { call:'TBD', label:'UCL not computable', cls:'du-tbd' };
+    const rod = CRITERIA.ROD.Hg;
+    return (Hg.uclC <= rod)
+      ? { call:'PASS', label:`leave-eligible (Chebyshev UCL ${Hg.uclC.toFixed(0)} ≤ ${rod})`, cls:'du-pass' }
+      : { call:'ACT',  label:`action indicated (Chebyshev UCL ${Hg.uclC.toFixed(0)} > ${rod})`, cls:'du-act' };
+  }
+
+  // ---- overlap guard (within active scenario only) -----------------------
+  function wouldOverlapActiveDU(poly, ignoreLayer){
+    let conflict = null;
+    eachActiveDU(l => {
+      if(conflict || l === ignoreLayer) return;
+      const op = layerToPoly(l); if(!op) return;
+      try {
+        if(turf.booleanIntersects(poly, op)){
+          const inter = turf.intersect(poly, op);
+          if(inter && turf.area(inter) > 1) conflict = l;
+        }
+      } catch(e){ /* turf can throw on degenerate geometry */ }
+    });
+    return conflict;
+  }
+
+  // ---- DU lifecycle ------------------------------------------------------
+  function applyDUStyle(layer){
+    if(!isDU(layer) || !layer.setStyle) return;
+    if(STATE.du.colorByAction){
+      const a = DU_ACTION_LOOKUP[layer.duMeta.action] || DU_ACTION_LOOKUP.Undecided;
+      layer.setStyle({ color:a.color, fillColor:a.color, fillOpacity:0.35, weight:2.5, dashArray:null });
+    }
+    // visibility per active scenario
+    const path = layer._path;
+    if(path){ path.style.display = isVisibleDU(layer) ? '' : 'none'; }
+  }
+  function refreshAllDUStyles(){ eachDU(applyDUStyle); }
+
+  function promoteToDU(layer, opts){
+    opts = opts || {};
+    const poly = layerToPoly(layer);
+    if(!poly){
+      alert('Only polygons, rectangles, and circles can be marked as Decision Units.');
+      return false;
+    }
+    const conflict = wouldOverlapActiveDU(poly, layer);
+    if(conflict){
+      const otherName = (conflict.duMeta && conflict.duMeta.name) || 'another DU';
+      alert(`Cannot mark as DU: this shape overlaps "${otherName}" in the active scenario.\n\nOverlapping DUs are prevented per the project decision rules. Move or resize the shape so it does not intersect any existing DU in this scenario.`);
+      return false;
+    }
+    const n = countDUsInScenario(STATE.du.activeScenarioId) + 1;
+    layer.duMeta = {
+      schema: DU_SCHEMA,
+      id: opts.id || genId('du'),
+      name: opts.name || `DU-${n}`,
+      action: opts.action || 'Undecided',
+      scenarioId: opts.scenarioId || STATE.du.activeScenarioId,
+      depthFt: opts.depthFt || 0.5,
+      bulkDensity: opts.bulkDensity || null,
+      postExcavationMean: opts.postExcavationMean || null,
+      destinationDuId: opts.destinationDuId || null,
+      notes: opts.notes || '',
+    };
+    applyDUStyle(layer);
+    attachShapeInfo(layer);
+    refreshDUUI();
+    scheduleAutosave();
+    return true;
+  }
+  function unmarkDU(layer){
+    if(!isDU(layer)) return;
+    delete layer.duMeta;
+    if(layer.setStyle) applyShapeStyle(layer);
+    if(layer._path) layer._path.style.display = '';   // restore visibility
+    attachShapeInfo(layer);
+    refreshDUUI();
+    scheduleAutosave();
+  }
+
+  // exposed to outer pm:create hook
+  window.maybeAutoPromoteToDU = function(layer){
+    if(!STATE.du.autoMark) return;
+    if(!(layer instanceof L.Polygon || layer instanceof L.Circle)) return;
+    promoteToDU(layer);
+  };
+  window.onShapeEdited = function(layer){
+    if(!isDU(layer)) return;
+    const poly = layerToPoly(layer); if(!poly) return;
+    const conflict = wouldOverlapActiveDU(poly, layer);
+    if(conflict){
+      const otherName = (conflict.duMeta && conflict.duMeta.name) || 'another DU';
+      alert(`Warning: after edit, "${layer.duMeta.name}" now overlaps "${otherName}" in the active scenario. Reshape or move it back before relying on scenario totals.`);
+    }
+    refreshDUUI();
+  };
+
+  // ---- scenarios ---------------------------------------------------------
+  function newScenario(){
+    const name = (prompt('New scenario name:', `Scenario ${STATE.du.scenarios.length}`) || '').trim();
+    if(!name) return;
+    const id = genId('scen');
+    STATE.du.scenarios.push({ id, name, notes:'' });
+    STATE.du.activeScenarioId = id;
+    refreshDUUI(); refreshAllDUStyles(); scheduleAutosave();
+  }
+  function renameScenario(){
+    const s = activeScenario();
+    if(s.readonly){ alert('The "Unassigned" scenario cannot be renamed.'); return; }
+    const name = (prompt('Rename scenario:', s.name) || '').trim();
+    if(!name) return;
+    s.name = name;
+    refreshDUUI(); scheduleAutosave();
+  }
+  function duplicateScenario(){
+    const s = activeScenario();
+    const newName = (prompt('Duplicate as:', s.name + ' (copy)') || '').trim();
+    if(!newName) return;
+    const newId = genId('scen');
+    STATE.du.scenarios.push({ id:newId, name:newName, notes:s.notes });
+    const toClone = [];
+    eachDU(l => { if(l.duMeta.scenarioId === s.id) toClone.push(l); });
+    toClone.forEach(l => {
+      let gj, newLayer;
+      if(l instanceof L.Circle){
+        gj = l.toGeoJSON(); gj.properties = gj.properties || {};
+        gj.properties.radius = l.getRadius();
+        newLayer = L.circle([gj.geometry.coordinates[1], gj.geometry.coordinates[0]],
+                            { radius: gj.properties.radius });
+      } else {
+        gj = l.toGeoJSON();
+        newLayer = L.geoJSON(gj).getLayers()[0];
+      }
+      if(l.options && newLayer.setStyle){
+        newLayer.setStyle({ color:l.options.color, weight:l.options.weight,
+          fillColor:l.options.fillColor, fillOpacity:l.options.fillOpacity, dashArray:l.options.dashArray });
+      }
+      drawnItems.addLayer(newLayer);
+      newLayer.duMeta = Object.assign({}, l.duMeta, {
+        id: genId('du'), scenarioId: newId,
+      });
+      applyDUStyle(newLayer);
+      attachShapeInfo(newLayer);
+      newLayer.on('pm:edit pm:dragend pm:update', () => {
+        window.onShapeEdited(newLayer); attachShapeInfo(newLayer); scheduleAutosave();
+      });
+    });
+    STATE.du.activeScenarioId = newId;
+    refreshDUUI(); refreshAllDUStyles(); scheduleAutosave();
+  }
+  function deleteScenario(){
+    const s = activeScenario();
+    if(s.readonly){ alert('The "Unassigned" scenario cannot be deleted.'); return; }
+    const reassigned = countDUsInScenario(s.id);
+    const ok = confirm(`Delete scenario "${s.name}"?\n\n${reassigned} DU(s) will be reassigned to "Unassigned" (you can re-organize them later).`);
+    if(!ok) return;
+    eachDU(l => { if(l.duMeta.scenarioId === s.id) l.duMeta.scenarioId = 'unassigned'; });
+    STATE.du.scenarios = STATE.du.scenarios.filter(x => x.id !== s.id);
+    STATE.du.activeScenarioId = 'unassigned';
+    refreshDUUI(); refreshAllDUStyles(); scheduleAutosave();
+  }
+
+  // ---- per-DU report card (HTML appended into shape popup) ---------------
+  function fmt(v, d){ d = (d==null?2:d); return (typeof v==='number'&&isFinite(v)) ? v.toFixed(d) : '—'; }
+  function fmtInt(v){ return (typeof v==='number'&&isFinite(v)) ? Math.round(v).toLocaleString() : '—'; }
+
+  function duReportHtml(layer){
+    if(!isDU(layer)) return '';
+    const meta  = layer.duMeta;
+    const stats = duStats(layer);
+    const call  = duCall(stats);
+    const sc    = STATE.du.scenarios.find(s => s.id === meta.scenarioId);
+    const act   = DU_ACTION_LOOKUP[meta.action] || DU_ACTION_LOOKUP.Undecided;
+    const db    = stats.datasetBreakdown;
+    const brk   = `n=${stats.n} (R1:${db['1']} R2:${db['2']} EA:${db.EA})`;
+
+    let rows = '';
+    ['Hg','As'].forEach(a => {
+      const s = stats.byAnalyte[a];
+      if(!s.hasResult){ rows += `<tr><td>${a}</td><td colspan="6"><i>no samples</i></td></tr>`; return; }
+      if(s.allND){
+        rows += `<tr><td>${a}</td><td colspan="6"><i>All ND at MDL ${fmt(s.mdl,2)} mg/kg — &lt; ROD ${s.rod}</i></td></tr>`;
+        return;
+      }
+      const oR = (typeof s.mean==='number' && s.mean > s.rod) ? ' class="over"' : '';
+      const oP = (s.pmb!=null && s.mean > s.pmb) ? ' class="over"' : '';
+      rows += `<tr>
+        <td>${a}</td>
+        <td${oR}>${fmt(s.mean,1)}</td>
+        <td>${fmt(s.max,1)}</td>
+        <td>${fmt(s.uclT,1)}</td>
+        <td>${fmt(s.uclC,1)}</td>
+        <td>${fmt(s.pctOverROD,0)}%</td>
+        <td${oP}>${s.pctOverPMB!=null ? fmt(s.pctOverPMB,0)+'%' : '—'}</td>
+      </tr>`;
+    });
+    const sbtl = [];
+    ['Sb','Tl'].forEach(a => {
+      const s = stats.byAnalyte[a]; if(!s.hasResult) return;
+      sbtl.push(s.allND
+        ? `${a}: all ND at MDL ${fmt(s.mdl,2)} mg/kg (&lt; ROD ${s.rod})`
+        : `${a}: ${s.nDetect}/${s.n} detect (max ${fmt(s.max,2)})`);
+    });
+
+    return `<div class="du-report">
+      <div><b>DU: ${meta.name}</b> · <span class="${call.cls}">${call.call}</span></div>
+      <div style="font-size:10.5px;color:var(--muted);margin:2px 0">
+        Action: <b>${act.label}</b> · Scenario: ${sc?sc.name:'?'}<br>
+        ${brk} · ${stats.area_ac.toFixed(3)} ac · depth ${meta.depthFt} ft · vol ${fmtInt(stats.volume_yd3)} yd³ · Hg mass ${fmt(stats.HgMass_kg,2)} kg
+      </div>
+      <table>
+        <thead><tr><th>Analyte</th><th>mean</th><th>max</th><th>UCL-t</th><th>UCL-C</th><th>%&gt;ROD</th><th>%&gt;PMB</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${sbtl.length ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${sbtl.join(' · ')}</div>` : ''}
+      <div class="du-method-note">
+        ${call.label}<br>
+        UCL = Student-t (UCL-t) &amp; Chebyshev (UCL-C) on raw values; ½ DL substitution for non-detects. PASS/ACT uses Chebyshev (conservative).
+        <br><b>Screening only</b> — formal ROD compliance is per Exposure Unit via ProUCL.
+      </div>
+      <div class="row" style="margin-top:6px;gap:4px;flex-wrap:wrap">
+        <button class="du-mini-btn" onclick="window.duEditPrompt('${meta.id}')">Edit DU…</button>
+        <button class="du-mini-btn" onclick="window.duUnmark('${meta.id}')">Unmark</button>
+      </div>
+    </div>`;
+  }
+
+  // popup addendum: report card if DU, otherwise "Mark as DU" button
+  window.duPopupAddendum = function(layer, info){
+    if(info.kind === 'Line' || info.kind === 'Annotation') return '';
+    if(isDU(layer)) return duReportHtml(layer);
+    if(!(layer instanceof L.Polygon || layer instanceof L.Circle)) return '';
+    if(!layer._duHandle){ layer._duHandle = genId('h'); window['_duHandle_'+layer._duHandle] = layer; }
+    return `<div style="margin-top:6px;border-top:1px solid var(--line);padding-top:6px">
+      <button class="du-mini-btn" onclick="window.duPromote('${layer._duHandle}')">Mark as DU</button>
+      <span style="font-size:10px;color:var(--muted);margin-left:6px">(assigns to <b>${activeScenario().name}</b>)</span>
+    </div>`;
+  };
+  window.duPromote = function(h){
+    const l = window['_duHandle_'+h]; if(!l) return;
+    if(promoteToDU(l)) l.closePopup();
+  };
+  window.duEditPrompt = function(duId){
+    const l = findDUById(duId); if(!l) return;
+    const meta = l.duMeta;
+    const name = (prompt('DU name:', meta.name) || '').trim(); if(!name) return; meta.name = name;
+    const actOpts = DU_ACTIONS.map((a,i)=>`${i+1}=${a.label}`).join('\n');
+    const aIdx = prompt('Action:\n'+actOpts, String(DU_ACTIONS.findIndex(a=>a.key===meta.action)+1));
+    const aN = parseInt(aIdx, 10);
+    if(aN >= 1 && aN <= DU_ACTIONS.length) meta.action = DU_ACTIONS[aN-1].key;
+    const depth = parseFloat(prompt('Depth (ft):', String(meta.depthFt)));
+    if(isFinite(depth) && depth > 0) meta.depthFt = depth;
+    const bdIn = prompt('Bulk density (kg/m³, blank = use default '+STATE.du.defaultBulkDensity+'):',
+      meta.bulkDensity != null ? String(meta.bulkDensity) : '');
+    if(bdIn === '' || bdIn == null) meta.bulkDensity = null;
+    else { const v = parseFloat(bdIn); if(isFinite(v) && v > 0) meta.bulkDensity = v; }
+    if(meta.action === 'HandExcavate'){
+      const pem = prompt('Post-excavation confirmation mean Hg (mg/kg, blank = PMB '+((CRITERIA.PMB||{}).Hg||58)+'):',
+        meta.postExcavationMean != null ? String(meta.postExcavationMean) : '');
+      if(pem === '' || pem == null) meta.postExcavationMean = null;
+      else { const v = parseFloat(pem); if(isFinite(v)) meta.postExcavationMean = v; }
+    }
+    if(meta.action === 'ExcavateConsolidate'){
+      const others = []; eachActiveDU(x => { if(x.duMeta.id !== meta.id) others.push(x.duMeta); });
+      if(!others.length){
+        alert('Excavate & consolidate requires another DU in the active scenario as destination. Create a destination DU first, then re-edit this one.');
+        meta.destinationDuId = null;
+      } else {
+        const opts = others.map((d,i)=>`${i+1}=${d.name}`).join('\n');
+        const sel = prompt('Destination DU:\n'+opts,
+          meta.destinationDuId ? String(others.findIndex(d=>d.id===meta.destinationDuId)+1) : '1');
+        const sN = parseInt(sel,10);
+        if(sN >= 1 && sN <= others.length) meta.destinationDuId = others[sN-1].id;
+      }
+    }
+    const scOpts = STATE.du.scenarios.map((s,i)=>`${i+1}=${s.name}`).join('\n');
+    const scIdx = prompt('Move to scenario:\n'+scOpts,
+      String(STATE.du.scenarios.findIndex(s=>s.id===meta.scenarioId)+1));
+    const scN = parseInt(scIdx,10);
+    if(scN >= 1 && scN <= STATE.du.scenarios.length) meta.scenarioId = STATE.du.scenarios[scN-1].id;
+    applyDUStyle(l); attachShapeInfo(l); refreshDUUI(); scheduleAutosave();
+  };
+  window.duUnmark = function(duId){
+    const l = findDUById(duId); if(!l) return;
+    if(!confirm(`Unmark "${l.duMeta.name}"? The shape will remain on the map but will no longer be a DU.`)) return;
+    unmarkDU(l);
+  };
+
+  // ---- scenario rollup ---------------------------------------------------
+  function scenarioTotals(scenarioId){
+    const dus = []; eachDU(l => { if(l.duMeta.scenarioId === scenarioId) dus.push(l); });
+    let acresTotal = 0, acresDisturbed = 0, volumeDisturbed = 0;
+    let HgMassRemoved = 0, HgMassStabilized = 0;
+    let wrNum = 0, wrDen = 0;
+    const acresByAction = {};
+    DU_ACTIONS.forEach(a => acresByAction[a.key] = 0);
+    const issues = [];
+    const pmbHg = (CRITERIA.PMB || {}).Hg || 58;
+    dus.forEach(l => {
+      const meta  = l.duMeta;
+      const stats = duStats(l);
+      acresTotal += stats.area_ac;
+      acresByAction[meta.action] = (acresByAction[meta.action] || 0) + stats.area_ac;
+      const Hg = stats.byAnalyte.Hg;
+      const meanHg = (Hg && Hg.hasResult) ? Hg.mean : 0;
+      const mass = stats.HgMass_kg;
+      let residual = meanHg, removed = 0, stabilized = 0;
+      if(meta.action === 'Leave'){
+        // unchanged
+      } else if(meta.action === 'Amend'){
+        stabilized = mass;
+        acresDisturbed += stats.area_ac;  // amend disturbs surface
+      } else if(meta.action === 'HandExcavate'){
+        removed = mass;
+        residual = (typeof meta.postExcavationMean === 'number') ? meta.postExcavationMean : pmbHg;
+        acresDisturbed += stats.area_ac;
+        volumeDisturbed += stats.volume_yd3;
+      } else if(meta.action === 'ExcavateConsolidate'){
+        residual = pmbHg;
+        acresDisturbed += stats.area_ac;
+        volumeDisturbed += stats.volume_yd3;
+        if(!meta.destinationDuId) issues.push(`"${meta.name}": destination DU not set`);
+      } else if(meta.action === 'Undecided'){
+        issues.push(`"${meta.name}": action is Undecided`);
+      }
+      HgMassRemoved    += removed;
+      HgMassStabilized += stabilized;
+      wrNum += residual * stats.area_ac;
+      wrDen += stats.area_ac;
+    });
+    return {
+      nDUs: dus.length,
+      acresTotal, acresDisturbed, volumeDisturbed_yd3: volumeDisturbed,
+      acresByAction,
+      HgMassRemoved_kg: HgMassRemoved,
+      HgMassStabilized_kg: HgMassStabilized,
+      residualMeanHg: wrDen > 0 ? wrNum / wrDen : null,
+      issues,
+    };
+  }
+
+  // ---- comparison table --------------------------------------------------
+  function compareTableRows(){
+    return STATE.du.scenarios.map(s => Object.assign({ id:s.id, name:s.name }, scenarioTotals(s.id)));
+  }
+  function renderCompareTable(){
+    const rows = compareTableRows();
+    const headers = [
+      'Scenario','# DUs','Acres total','Acres disturbed','Disturbed vol (yd³)',
+      'Hg removed (kg)','Hg stabilized (kg)','Residual mean Hg (mg/kg)',
+      ...DU_ACTIONS.map(a => `ac: ${a.key}`),
+      'Issues'
+    ];
+    const thead = `<tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr>`;
+    const tbody = rows.map(r => {
+      const active = r.id === STATE.du.activeScenarioId ? ' class="active"' : '';
+      const issuesCell = r.issues.length
+        ? `<td title="${r.issues.join('\n').replace(/"/g,'&quot;')}" style="color:#b35900">⚠ ${r.issues.length}</td>`
+        : '<td>—</td>';
+      const actionAcres = DU_ACTIONS.map(a => `<td>${(r.acresByAction[a.key]||0).toFixed(3)}</td>`).join('');
+      return `<tr${active}>
+        <td style="text-align:left">${r.name}</td>
+        <td>${r.nDUs}</td>
+        <td>${r.acresTotal.toFixed(3)}</td>
+        <td class="disturbed">${r.acresDisturbed.toFixed(3)}</td>
+        <td>${fmtInt(r.volumeDisturbed_yd3)}</td>
+        <td>${r.HgMassRemoved_kg.toFixed(2)}</td>
+        <td>${r.HgMassStabilized_kg.toFixed(2)}</td>
+        <td>${r.residualMeanHg!=null ? r.residualMeanHg.toFixed(1) : '—'}</td>
+        ${actionAcres}
+        ${issuesCell}
+      </tr>`;
+    }).join('');
+    document.getElementById('duCompareOut').innerHTML =
+      `<table class="du-compare-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table>
+       <p class="hint">Acres disturbed = hand-excavate + excavate&amp;consolidate + amend surface. Residual mean Hg is area-weighted across the scenario's DUs. CSV/TSV exports include all columns.</p>`;
+  }
+  function compareToDelim(sep){
+    const rows = compareTableRows();
+    const headers = ['Scenario','# DUs','Acres total','Acres disturbed','Disturbed vol (yd3)',
+      'Hg removed (kg)','Hg stabilized (kg)','Residual mean Hg (mg/kg)',
+      ...DU_ACTIONS.map(a => `Ac: ${a.key}`),
+      'Issues'];
+    const lines = [headers.join(sep)];
+    rows.forEach(r => {
+      const cells = [
+        r.name, r.nDUs,
+        r.acresTotal.toFixed(3), r.acresDisturbed.toFixed(3),
+        Math.round(r.volumeDisturbed_yd3),
+        r.HgMassRemoved_kg.toFixed(3), r.HgMassStabilized_kg.toFixed(3),
+        r.residualMeanHg!=null ? r.residualMeanHg.toFixed(2) : '',
+        ...DU_ACTIONS.map(a => (r.acresByAction[a.key]||0).toFixed(3)),
+        r.issues.join('; '),
+      ];
+      lines.push(cells.map(c => {
+        const s = String(c==null?'':c);
+        if(sep===',' && /[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+        return s;
+      }).join(sep));
+    });
+    return lines.join('\n');
+  }
+
+  // ---- hot-spot DU generator ---------------------------------------------
+  function generateHotspotDUs(){
+    const thr   = parseFloat(document.getElementById('duHotspotThr').value);
+    const minM2 = parseFloat(document.getElementById('duHotspotMinArea').value) || 50;
+    if(!(thr > 0)){ alert('Enter a positive Hg threshold.'); return; }
+    const samples = DATA.features.filter(f => f.properties.sampled && typeof f.properties.Hg === 'number');
+    if(samples.length < 3){ alert('Not enough sampled Hg data.'); return; }
+    const exceed = samples.filter(f => f.properties.Hg >= thr);
+    if(!exceed.length){ alert(`No samples ≥ ${thr} mg/kg Hg.`); return; }
+    const fc = turf.featureCollection(samples.map(f => turf.point(f.geometry.coordinates, { v: f.properties.Hg })));
+    let grid, bands;
+    try { grid  = turf.interpolate(fc, 8, { gridType:'point', property:'v', units:'meters', weight:2.5 }); }
+    catch(e){ alert('Interpolation failed: ' + e.message); return; }
+    try { bands = turf.isobands(grid, [thr, 1e12], { zProperty:'v' }); }
+    catch(e){ alert('Contouring failed: ' + e.message); return; }
+    let mask = null;
+    exceed.forEach(f => {
+      const b = turf.buffer(turf.point(f.geometry.coordinates), 20, { units:'meters' });
+      try { mask = mask ? turf.union(mask, b) : b; } catch(e){ if(!mask) mask = b; }
+    });
+    let created = 0, skipped = 0;
+    bands.features.forEach(bf => {
+      if(!bf.geometry) return;
+      turf.flatten(bf).features.forEach(band => {
+        let clip = band;
+        if(mask){ try { clip = turf.intersect(band, mask); } catch(e){ clip = null; } }
+        if(!clip) return;
+        turf.flatten(clip).features.forEach(piece => {
+          if(turf.area(piece) < minM2) return;
+          if(wouldOverlapActiveDU(piece, null)){ skipped++; return; }
+          const layer = L.geoJSON(piece).getLayers()[0];
+          drawnItems.addLayer(layer);
+          const ok = promoteToDU(layer, {
+            name: `Hotspot ≥${thr}-${++created}`,
+            action: 'HandExcavate', depthFt: 0.5,
+          });
+          if(!ok){ created--; drawnItems.removeLayer(layer); }
+          else { layer.on('pm:edit pm:dragend pm:update', () => {
+            window.onShapeEdited(layer); attachShapeInfo(layer); scheduleAutosave();
+          }); }
+        });
+      });
+    });
+    refreshDUUI();
+    alert(`Generated ${created} hot-spot DU(s) at Hg ≥ ${thr} mg/kg in active scenario "${activeScenario().name}". Action = Hand-excavate hot spot.` +
+          (skipped ? `\n\n${skipped} contour piece(s) skipped because they overlapped existing DUs in the active scenario.` : ''));
+  }
+
+  // ---- UI render ---------------------------------------------------------
+  function refreshDUUI(){
+    const sel = document.getElementById('duActiveScenario');
+    if(sel){
+      sel.innerHTML = STATE.du.scenarios.map(s =>
+        `<option value="${s.id}"${s.id===STATE.du.activeScenarioId?' selected':''}>${s.name}${s.readonly?' (default)':''}</option>`
+      ).join('');
+    }
+    const list = document.getElementById('duList');
+    if(list){
+      const items = [];
+      eachActiveDU(l => {
+        const m = l.duMeta, stats = duStats(l), call = duCall(stats);
+        const a = DU_ACTION_LOOKUP[m.action] || DU_ACTION_LOOKUP.Undecided;
+        items.push(`<div class="du-list-item" data-duid="${m.id}">
+          <span><span class="swatch" style="background:${a.color}"></span>${m.name}
+            <span style="color:var(--muted)">· n=${stats.n} · ${stats.area_ac.toFixed(2)} ac</span></span>
+          <span class="${call.cls}" style="font-size:9px">${call.call}</span>
+        </div>`);
+      });
+      list.innerHTML = items.length
+        ? items.join('')
+        : '<i>No DUs in "'+activeScenario().name+'" yet — draw a polygon, circle, or rectangle and click "Mark as DU" in its popup.</i>';
+      list.querySelectorAll('.du-list-item').forEach(el => {
+        el.addEventListener('click', () => {
+          const l = findDUById(el.dataset.duid); if(!l) return;
+          if(l.getBounds) map.fitBounds(l.getBounds(), { padding:[40,40], maxZoom:19 });
+          else if(l.getLatLng) map.setView(l.getLatLng(), Math.max(map.getZoom(), 18));
+          if(l.openPopup) l.openPopup();
+        });
+      });
+    }
+    const sc = activeScenario();
+    const delBtn = document.getElementById('duDeleteScenario');
+    if(delBtn){ delBtn.disabled = !!sc.readonly; delBtn.style.opacity = sc.readonly?0.5:1; }
+    const renBtn = document.getElementById('duRenameScenario');
+    if(renBtn){ renBtn.disabled = !!sc.readonly; renBtn.style.opacity = sc.readonly?0.5:1; }
+  }
+  window.refreshDUUI = refreshDUUI;
+
+  // session-merge — called by loadSession after shapes have been restored
+  window.mergeDUStateFromSession = function(savedDu){
+    if(!savedDu || typeof savedDu !== 'object') return;
+    const def = STATE.du;
+    STATE.du = {
+      schema: savedDu.schema || def.schema,
+      activeScenarioId: savedDu.activeScenarioId || 'unassigned',
+      scenarios: (Array.isArray(savedDu.scenarios) && savedDu.scenarios.length) ? savedDu.scenarios : def.scenarios,
+      colorByAction: typeof savedDu.colorByAction === 'boolean' ? savedDu.colorByAction : def.colorByAction,
+      defaultBulkDensity: typeof savedDu.defaultBulkDensity === 'number' ? savedDu.defaultBulkDensity : def.defaultBulkDensity,
+      includeEA: typeof savedDu.includeEA === 'boolean' ? savedDu.includeEA : def.includeEA,
+      autoMark: false,
+    };
+    if(!STATE.du.scenarios.find(s => s.id === 'unassigned')){
+      STATE.du.scenarios.unshift({ id:'unassigned', name:'Unassigned', notes:'', readonly:true });
+    }
+    const cb = document.getElementById('duColorByAction'); if(cb) cb.checked = STATE.du.colorByAction;
+    const ie = document.getElementById('duIncludeEA');     if(ie) ie.checked = STATE.du.includeEA;
+    const bd = document.getElementById('duBulkDensity');   if(bd) bd.value   = STATE.du.defaultBulkDensity;
+    refreshAllDUStyles();
+  };
+
+  // ---- wiring (sub-sections, controls) -----------------------------------
+  document.querySelectorAll('.du-sub > h3').forEach(h => {
+    h.addEventListener('click', () => h.parentElement.classList.toggle('closed'));
+  });
+  const $du = id => document.getElementById(id);
+  $du('duAutoMark').addEventListener('change', e => { STATE.du.autoMark = e.target.checked; scheduleAutosave(); });
+  $du('duColorByAction').addEventListener('change', e => {
+    STATE.du.colorByAction = e.target.checked;
+    if(!e.target.checked){ eachDU(applyShapeStyle); } else { refreshAllDUStyles(); }
+    scheduleAutosave();
+  });
+  $du('duIncludeEA').addEventListener('change', e => {
+    STATE.du.includeEA = e.target.checked;
+    refreshDUUI(); eachDU(l => attachShapeInfo(l));
+    scheduleAutosave();
+  });
+  $du('duBulkDensity').addEventListener('change', e => {
+    const v = parseFloat(e.target.value); if(v > 0) STATE.du.defaultBulkDensity = v;
+    refreshDUUI(); eachDU(l => attachShapeInfo(l)); scheduleAutosave();
+  });
+  $du('duActiveScenario').addEventListener('change', e => {
+    STATE.du.activeScenarioId = e.target.value;
+    refreshDUUI(); refreshAllDUStyles(); scheduleAutosave();
+  });
+  $du('duNewScenario').addEventListener('click', newScenario);
+  $du('duRenameScenario').addEventListener('click', renameScenario);
+  $du('duDuplicateScenario').addEventListener('click', duplicateScenario);
+  $du('duDeleteScenario').addEventListener('click', deleteScenario);
+  $du('duCompareRender').addEventListener('click', renderCompareTable);
+  $du('duCompareCopy').addEventListener('click', () => {
+    const tsv = compareToDelim('\t');
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(tsv).then(
+        () => alert('Comparison table copied as TSV (paste into Excel or a doc).'),
+        () => prompt('Copy failed — copy manually:', tsv)
+      );
+    } else prompt('Copy manually:', tsv);
+  });
+  $du('duCompareCSV').addEventListener('click', () => {
+    download(expFileName('ABP_scenarios') + '.csv', compareToDelim(','), 'text/csv');
+  });
+  $du('duHotspotRun').addEventListener('click', generateHotspotDUs);
+
+  // initial render
+  refreshDUUI();
+  console.log('[ABP] Decision Units & Scenarios loaded.');
+})();
+
 buildMarkers();
 buildLegend();
 syncControlVisibility();
