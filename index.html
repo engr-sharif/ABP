@@ -314,8 +314,9 @@ body:not(.tab-open) #coords{left:0}
 <nav id="tabBar" role="tablist">
   <button class="tab-btn" data-tab="view"   role="tab">View</button>
   <button class="tab-btn" data-tab="filter" role="tab">Filter</button>
-  <button class="tab-btn" data-tab="draw"   role="tab">Draw</button>
-  <button class="tab-btn" data-tab="du"     role="tab">Decision Units</button>
+  <button class="tab-btn" data-tab="draw"     role="tab">Draw</button>
+  <button class="tab-btn" data-tab="advanced" role="tab">Advanced</button>
+  <button class="tab-btn" data-tab="du"       role="tab">Decision Units</button>
   <button class="tab-btn" data-tab="stats"  role="tab">Stats</button>
   <button class="tab-btn" data-tab="export" role="tab">Export</button>
   <button id="tabPanelClose" title="Hide panel — click any tab to reopen">✕</button>
@@ -419,7 +420,7 @@ body:not(.tab-open) #coords{left:0}
 
   </div><!-- /tab-pane view -->
 
-  <div class="tab-pane" data-tab="draw">
+  <div class="tab-pane" data-tab="advanced">
 
   <div class="section closed" data-sec="advanced">
     <h2>Advanced (SOTA) <span class="chev">▾</span></h2>
@@ -479,6 +480,10 @@ body:not(.tab-open) #coords{left:0}
       </div>
     </div>
   </div>
+
+  </div><!-- /tab-pane advanced -->
+
+  <div class="tab-pane" data-tab="draw">
 
   <div class="section closed" data-sec="draw">
     <h2>Draw &amp; Measure <span class="chev">▾</span></h2>
