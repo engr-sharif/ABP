@@ -424,6 +424,19 @@ body:not(.tab-open) #coords{left:0}
   </div>
 </div>
 
+<!-- Google Drive file picker modal -->
+<div id="gdPickerModal" class="du-modal-overlay" hidden>
+  <div class="du-modal" style="width:480px;max-width:94vw">
+    <div class="du-modal-head">
+      <h3>Open project from Google Drive</h3>
+      <button id="gdPickerClose" class="du-modal-x" aria-label="close">✕</button>
+    </div>
+    <div class="du-modal-body">
+      <div id="gdPickerList" style="font-size:12px"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ============================== TOP BAR ============================== -->
 <div id="topbar">
   <h1>SBMM ABP Soil Contamination Visualizer</h1>
@@ -880,10 +893,31 @@ body:not(.tab-open) #coords{left:0}
       <div id="sessionMsg" class="hint" style="margin-top:4px"></div>
 
       <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
-      <label class="field" style="margin-top:0">Google Drive sync — feasibility check</label>
-      <p class="hint" style="margin-top:0">Tests whether this network allows Google sign-in + the Drive API, the prerequisite for in-app Drive sync. Run it on the deployed page (engr-sharif.github.io), not a local copy.</p>
-      <button class="btn" id="gdriveTest" style="width:100%">Test Google connectivity</button>
-      <div id="gdriveTestOut" style="margin-top:6px;font-size:11px"></div>
+      <h2 style="font-size:12px;margin:0 0 6px;color:var(--ink)">Google Drive sync</h2>
+      <p class="hint" style="margin-top:0">Save and open project files directly in your own Google Drive. Files are private to your Drive (the app uses the <code>drive.file</code> scope — it can only see files it created).</p>
+
+      <label class="field" style="margin-top:0">OAuth Client ID <span class="hint" style="font-weight:400">— from Google Cloud Console</span></label>
+      <div class="row" style="gap:4px">
+        <input type="text" id="gdClientId" placeholder="…apps.googleusercontent.com" style="flex:3;font-size:10px">
+        <button class="btn" id="gdSaveClientId" style="flex:none">Save</button>
+      </div>
+
+      <div class="row" style="gap:4px;margin-top:6px;align-items:center">
+        <button class="btn primary" id="gdConnect" style="flex:none">Connect Google Drive</button>
+        <span id="gdStatus" class="hint" style="flex:1">Not connected</span>
+      </div>
+      <div class="row" style="gap:4px;margin-top:6px">
+        <button class="btn" id="gdSave" style="flex:1">☁ Save to Drive</button>
+        <button class="btn" id="gdOpen" style="flex:1">☁ Open from Drive</button>
+      </div>
+      <div id="gdMsg" class="hint" style="margin-top:4px"></div>
+
+      <details style="margin-top:8px">
+        <summary class="hint" style="cursor:pointer">Network feasibility check</summary>
+        <p class="hint" style="margin-top:4px">Tests whether this network allows Google sign-in + the Drive API. Run it on the deployed page, not a local copy.</p>
+        <button class="btn" id="gdriveTest" style="width:100%">Test Google connectivity</button>
+        <div id="gdriveTestOut" style="margin-top:6px;font-size:11px"></div>
+      </details>
     </div>
   </div>
 
@@ -2571,6 +2605,9 @@ function applySession(d, silent){
   if(d.activeTab && document.querySelector('.tab-btn[data-tab="'+d.activeTab+'"]')){
     activateTab(d.activeTab);
   }
+  // Reset any Google-Drive file binding — a freshly loaded local/browser state is
+  // not "the Drive file we were editing"; gdLoadFile re-binds after this returns.
+  if(typeof _gdResetBinding==='function') _gdResetBinding();
   _dirty = false; updateSaveStatus();
   return true;
 }
@@ -2736,6 +2773,175 @@ async function testGoogleConnectivity(){
   btn.disabled=false;
 }
 $('gdriveTest').addEventListener('click', testGoogleConnectivity);
+
+/* =========================================================================
+   GOOGLE DRIVE SYNC — client-side (Google Identity Services token model +
+   Drive REST v3). Uses the drive.file scope: the app can only see files it
+   created. No backend, no client secret. The OAuth Client ID is stored in
+   localStorage (it is not a secret — it is designed for public client code).
+   ========================================================================= */
+const GD_CID_KEY = 'abp_gd_client_id';
+const GD_SCOPE   = 'https://www.googleapis.com/auth/drive.file';
+const GD_FOLDER  = 'ABP Visualizer Projects';
+const DRIVE_API  = 'https://www.googleapis.com/drive/v3';
+const DRIVE_UP   = 'https://www.googleapis.com/upload/drive/v3';
+let _gisLoaded=false, _tokenClient=null, _gdToken=null, _gdTokenExp=0, _gdPending=null;
+let _gdFileId=null, _gdFileName=null;
+
+function gdClientId(){ return (localStorage.getItem(GD_CID_KEY)||'').trim(); }
+function _gdResetBinding(){ _gdFileId=null; _gdFileName=null; }
+function gdSetMsg(m){ const el=$('gdMsg'); if(el) el.textContent=m; }
+function updateGdStatus(){
+  const s=$('gdStatus'); if(!s) return;
+  const connected = _gdToken && Date.now()<_gdTokenExp;
+  s.textContent = connected ? 'Connected ✓' : (gdClientId()? 'Not connected' : 'Paste your Client ID first');
+  s.style.color = connected ? '#1a7f37' : 'var(--muted)';
+}
+function loadGIS(){
+  return new Promise((res,rej)=>{
+    if(window.google && google.accounts && google.accounts.oauth2){ _gisLoaded=true; return res(); }
+    const s=document.createElement('script'); s.src='https://accounts.google.com/gsi/client'; s.async=true; s.defer=true;
+    s.onload=()=>{ _gisLoaded=true; res(); };
+    s.onerror=()=>rej(new Error('Could not load Google sign-in (network blocked?)'));
+    document.head.appendChild(s);
+  });
+}
+async function gdConnect(interactive){
+  const cid=gdClientId();
+  if(!cid){ gdSetMsg('Paste your OAuth Client ID and click Save first.'); return false; }
+  try{ await loadGIS(); }catch(e){ gdSetMsg(e.message); return false; }
+  if(!_tokenClient || _tokenClient._cid!==cid){
+    _tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: cid, scope: GD_SCOPE,
+      callback: (resp)=>{
+        if(resp && resp.access_token){
+          _gdToken=resp.access_token;
+          _gdTokenExp=Date.now()+((resp.expires_in||3600)*1000)-60000;
+        }
+        if(_gdPending){ const r=_gdPending; _gdPending=null; r(resp); }
+        updateGdStatus();
+      },
+    });
+    _tokenClient._cid = cid;
+  }
+  return new Promise((resolve)=>{
+    _gdPending=(resp)=>resolve(!!(resp && resp.access_token));
+    try{ _tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' }); }
+    catch(e){ _gdPending=null; gdSetMsg('Sign-in failed: '+e.message); resolve(false); }
+  });
+}
+async function gdEnsureToken(){
+  if(_gdToken && Date.now()<_gdTokenExp) return _gdToken;
+  const ok=await gdConnect(false);   // try silent first; GIS will prompt if needed
+  return ok ? _gdToken : null;
+}
+async function gdFetch(url, opts){
+  const t=await gdEnsureToken(); if(!t) throw new Error('Not connected to Google Drive');
+  opts=opts||{}; opts.headers=Object.assign({Authorization:'Bearer '+t}, opts.headers||{});
+  const r=await fetch(url, opts);
+  if(r.status===401){ _gdToken=null; throw new Error('Drive session expired — click Connect again'); }
+  if(!r.ok){ throw new Error('Drive API '+r.status+': '+(await r.text()).slice(0,160)); }
+  return r;
+}
+async function gdFolderId(){
+  const q=encodeURIComponent(`mimeType='application/vnd.google-apps.folder' and name='${GD_FOLDER}' and trashed=false`);
+  const r=await gdFetch(`${DRIVE_API}/files?q=${q}&fields=files(id,name)&spaces=drive`);
+  const j=await r.json();
+  if(j.files && j.files.length) return j.files[0].id;
+  const c=await gdFetch(`${DRIVE_API}/files`, {method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:GD_FOLDER, mimeType:'application/vnd.google-apps.folder'})});
+  return (await c.json()).id;
+}
+function gdProjectName(){ return (($('projName')||{}).value||'ABP_project').trim().replace(/[^\w.-]+/g,'_') || 'ABP_project'; }
+async function gdSaveToDrive(){
+  try{
+    gdSetMsg('Saving to Google Drive…');
+    if(!(await gdEnsureToken())) return;
+    const baseName=gdProjectName();
+    const fileName=baseName.endsWith('.abp.json')?baseName:baseName+'.abp.json';
+    const payload={ app:APP_TAG, version:1, savedAt:new Date().toISOString(), name:baseName, state:sessionData() };
+    const body=JSON.stringify(payload, null, 2);
+    if(_gdFileId){
+      // update the content of the file we're currently working on
+      await gdFetch(`${DRIVE_UP}/files/${_gdFileId}?uploadType=media`,
+        {method:'PATCH', headers:{'Content-Type':'application/json'}, body});
+      gdSetMsg('Updated in Google Drive: '+(_gdFileName||fileName));
+    } else {
+      const folderId=await gdFolderId();
+      const boundary='abp'+Date.now().toString(36);
+      const meta={ name:fileName, parents:[folderId], mimeType:'application/json' };
+      const multipart =
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`+JSON.stringify(meta)+
+        `\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n`+body+
+        `\r\n--${boundary}--`;
+      const r=await gdFetch(`${DRIVE_UP}/files?uploadType=multipart&fields=id,name`,
+        {method:'POST', headers:{'Content-Type':'multipart/related; boundary='+boundary}, body:multipart});
+      const j=await r.json(); _gdFileId=j.id; _gdFileName=j.name;
+      gdSetMsg('Saved to Google Drive: '+j.name+' (folder: '+GD_FOLDER+')');
+    }
+    _dirty=false; updateSaveStatus();
+  }catch(e){ gdSetMsg('Drive save failed: '+e.message); }
+}
+async function gdOpenFromDrive(){
+  try{
+    gdSetMsg('Listing your ABP projects…');
+    if(!(await gdEnsureToken())) return;
+    const q=encodeURIComponent("name contains '.abp.json' and trashed=false");
+    const r=await gdFetch(`${DRIVE_API}/files?q=${q}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&pageSize=50`);
+    const j=await r.json();
+    const files=j.files||[];
+    const box=$('gdPickerList');
+    if(!files.length){ box.innerHTML='<i>No ABP project files found in your Drive yet. Use "Save to Drive" first.</i>'; }
+    else {
+      box.innerHTML=files.map(f=>{
+        const t=f.modifiedTime?new Date(f.modifiedTime).toLocaleString():'';
+        return `<div class="save-row">
+          <span class="save-name" title="${t}">${f.name} <span style="color:var(--muted);font-weight:400">· ${t}</span></span>
+          <span class="save-acts"><button class="du-li-btn" data-gd-id="${f.id}" data-gd-name="${encodeURIComponent(f.name)}">Open</button></span>
+        </div>`;
+      }).join('');
+      box.querySelectorAll('[data-gd-id]').forEach(b=>b.addEventListener('click',()=>gdLoadFile(b.dataset.gdId, decodeURIComponent(b.dataset.gdName))));
+    }
+    $('gdPickerModal').hidden=false;
+    gdSetMsg('');
+  }catch(e){ gdSetMsg('Drive list failed: '+e.message); }
+}
+async function gdLoadFile(id, name){
+  try{
+    if(_dirty && !confirm('Open "'+name+'" from Drive? Unsaved changes in the current view will be replaced.')) return;
+    const r=await gdFetch(`${DRIVE_API}/files/${id}?alt=media`);
+    const parsed=JSON.parse(await r.text());
+    const data=(parsed && parsed.state)?parsed.state:parsed;
+    if(applySession(data, true)){
+      _gdFileId=id; _gdFileName=name;
+      $('gdPickerModal').hidden=true;
+      gdSetMsg('Loaded from Google Drive: '+name+' (Save to Drive will update this file)');
+    } else gdSetMsg('Could not apply project state from '+name);
+  }catch(e){ gdSetMsg('Drive load failed: '+e.message); }
+}
+
+// ---- Drive UI wiring ----
+(function(){
+  const cidInput=$('gdClientId');
+  if(cidInput) cidInput.value=gdClientId();
+  updateGdStatus();
+  $('gdSaveClientId').addEventListener('click', ()=>{
+    const v=(cidInput.value||'').trim();
+    localStorage.setItem(GD_CID_KEY, v);
+    _tokenClient=null; _gdToken=null;     // force re-init with the new id
+    updateGdStatus(); gdSetMsg(v?'Client ID saved. Click Connect Google Drive.':'Client ID cleared.');
+  });
+  $('gdConnect').addEventListener('click', async ()=>{
+    gdSetMsg('Opening Google sign-in…');
+    const ok=await gdConnect(true);
+    gdSetMsg(ok?'Connected to Google Drive.':'Not connected.');
+    updateGdStatus();
+  });
+  $('gdSave').addEventListener('click', gdSaveToDrive);
+  $('gdOpen').addEventListener('click', gdOpenFromDrive);
+  $('gdPickerClose').addEventListener('click', ()=>{ $('gdPickerModal').hidden=true; });
+  $('gdPickerModal').addEventListener('click', e=>{ if(e.target.id==='gdPickerModal') $('gdPickerModal').hidden=true; });
+})();
 // OM charts are built when the Stats tab is first activated (see activateTab).
 
 // extend applyDisplay (Phase 1 version) to refresh stats + density layers
