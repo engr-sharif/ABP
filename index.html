@@ -878,6 +878,12 @@ body:not(.tab-open) #coords{left:0}
         <button class="btn" id="restoreAutosave" style="flex:none;font-size:10px;padding:3px 8px">Restore latest</button>
       </div>
       <div id="sessionMsg" class="hint" style="margin-top:4px"></div>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+      <label class="field" style="margin-top:0">Google Drive sync — feasibility check</label>
+      <p class="hint" style="margin-top:0">Tests whether this network allows Google sign-in + the Drive API, the prerequisite for in-app Drive sync. Run it on the deployed page (engr-sharif.github.io), not a local copy.</p>
+      <button class="btn" id="gdriveTest" style="width:100%">Test Google connectivity</button>
+      <div id="gdriveTestOut" style="margin-top:6px;font-size:11px"></div>
     </div>
   </div>
 
@@ -2688,6 +2694,48 @@ renderSavesList(); updateSaveStatus();
 window.addEventListener('beforeunload', e=>{
   if(_dirty){ e.preventDefault(); e.returnValue=''; return ''; }
 });
+
+// ---- Google Drive connectivity probe -------------------------------------
+// Decides whether in-app Drive sync is even possible on this network, before we
+// invest in the OAuth integration. Script-tag loads bypass CORS (clean onload/
+// onerror); the API host is probed with a no-cors fetch (resolve = reachable).
+function _scriptReach(url){
+  return new Promise(res=>{
+    const s=document.createElement('script'); let done=false;
+    const fin=ok=>{ if(done) return; done=true; try{s.remove();}catch(e){} res(ok); };
+    s.onload=()=>fin(true); s.onerror=()=>fin(false); s.src=url;
+    document.head.appendChild(s); setTimeout(()=>fin(false), 8000);
+  });
+}
+async function _fetchReach(url){
+  try{ const c=new AbortController(); const t=setTimeout(()=>c.abort(),8000);
+    await fetch(url,{mode:'no-cors',signal:c.signal}); clearTimeout(t); return true;
+  }catch(e){ return false; }
+}
+async function testGoogleConnectivity(){
+  const out=$('gdriveTestOut'); const btn=$('gdriveTest');
+  btn.disabled=true; out.innerHTML='<i>Testing… (up to ~8s per endpoint)</i>';
+  const checks=[
+    { label:'Google sign-in (Identity Services)', url:'https://accounts.google.com/gsi/client', kind:'script' },
+    { label:'Google API loader',                  url:'https://apis.google.com/js/api.js',     kind:'script' },
+    { label:'Drive API host',                     url:'https://www.googleapis.com/discovery/v1/apis', kind:'fetch' },
+  ];
+  const results=[];
+  for(const c of checks){
+    const ok = c.kind==='script' ? await _scriptReach(c.url) : await _fetchReach(c.url);
+    results.push({...c, ok});
+  }
+  const allOk=results.every(r=>r.ok);
+  const isLocal = location.protocol==='file:' || /^(127\.|localhost)/.test(location.hostname);
+  out.innerHTML =
+    results.map(r=>`<div>${r.ok?'✓':'✗'} ${r.label} <span style="color:var(--muted);font-size:9px">${r.url.replace('https://','')}</span></div>`).join('')
+    + `<div style="margin-top:6px;font-weight:600;color:${allOk?'#1a7f37':'#b91c1c'}">${
+        allOk ? '✓ Reachable — in-app Google Drive sync is feasible on this network.'
+              : '✗ At least one endpoint is blocked — in-app Drive sync likely will not work here. Use the project-file + shared-folder workflow instead.'}</div>`
+    + (isLocal ? `<div class="hint" style="margin-top:4px">Note: you're on a local/preview copy. Re-run this on the deployed page (engr-sharif.github.io) for an accurate result.</div>` : '');
+  btn.disabled=false;
+}
+$('gdriveTest').addEventListener('click', testGoogleConnectivity);
 // OM charts are built when the Stats tab is first activated (see activateTab).
 
 // extend applyDisplay (Phase 1 version) to refresh stats + density layers
