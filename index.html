@@ -896,16 +896,18 @@ body:not(.tab-open) #coords{left:0}
       <h2 style="font-size:12px;margin:0 0 6px;color:var(--ink)">Google Drive sync</h2>
       <p class="hint" style="margin-top:0">Save and open project files directly in your own Google Drive. Files are private to your Drive (the app uses the <code>drive.file</code> scope — it can only see files it created).</p>
 
-      <label class="field" style="margin-top:0">OAuth Client ID <span class="hint" style="font-weight:400">— from Google Cloud Console</span></label>
-      <div class="row" style="gap:4px">
-        <input type="text" id="gdClientId" placeholder="…apps.googleusercontent.com" style="flex:3;font-size:10px">
-        <button class="btn" id="gdSaveClientId" style="flex:none">Save</button>
-      </div>
-
-      <div class="row" style="gap:4px;margin-top:6px;align-items:center">
+      <div class="row" style="gap:4px;margin-top:2px;align-items:center">
         <button class="btn primary" id="gdConnect" style="flex:none">Connect Google Drive</button>
         <span id="gdStatus" class="hint" style="flex:1">Not connected</span>
       </div>
+      <p class="hint" style="margin-top:4px">Just click Connect — no setup needed. (Advanced: override the built-in OAuth Client ID below if your team uses a different Google Cloud project.)</p>
+      <details style="margin-top:2px">
+        <summary class="hint" style="cursor:pointer">Advanced: OAuth Client ID</summary>
+        <div class="row" style="gap:4px;margin-top:4px">
+          <input type="text" id="gdClientId" placeholder="…apps.googleusercontent.com" style="flex:3;font-size:10px">
+          <button class="btn" id="gdSaveClientId" style="flex:none">Save</button>
+        </div>
+      </details>
       <div class="row" style="gap:4px;margin-top:6px">
         <button class="btn" id="gdSave" style="flex:1">☁ Save to Drive</button>
         <button class="btn" id="gdOpen" style="flex:1">☁ Open from Drive</button>
@@ -2781,6 +2783,11 @@ $('gdriveTest').addEventListener('click', testGoogleConnectivity);
    localStorage (it is not a secret — it is designed for public client code).
    ========================================================================= */
 const GD_CID_KEY = 'abp_gd_client_id';
+// Built-in OAuth Client ID so every user can just click "Connect" — no pasting.
+// A Client ID is PUBLIC by design (safe in client-side code); the Authorized
+// JavaScript origins restriction (engr-sharif.github.io) is what protects it.
+// NOT a secret — never put the client *secret* here. Override via the field.
+const GD_DEFAULT_CID = '110992006172-9mo3qolv1gs9s82apo8debomrlclqvdf.apps.googleusercontent.com';
 const GD_SCOPE   = 'https://www.googleapis.com/auth/drive.file';
 const GD_FOLDER  = 'ABP Visualizer Projects';
 const DRIVE_API  = 'https://www.googleapis.com/drive/v3';
@@ -2788,7 +2795,7 @@ const DRIVE_UP   = 'https://www.googleapis.com/upload/drive/v3';
 let _gisLoaded=false, _tokenClient=null, _gdToken=null, _gdTokenExp=0, _gdPending=null;
 let _gdFileId=null, _gdFileName=null;
 
-function gdClientId(){ return (localStorage.getItem(GD_CID_KEY)||'').trim(); }
+function gdClientId(){ return ((localStorage.getItem(GD_CID_KEY)||'').trim()) || GD_DEFAULT_CID; }
 function _gdResetBinding(){ _gdFileId=null; _gdFileName=null; }
 function gdSetMsg(m){ const el=$('gdMsg'); if(el) el.textContent=m; }
 function updateGdStatus(){
