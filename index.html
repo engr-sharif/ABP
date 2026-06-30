@@ -2727,6 +2727,7 @@ window.addEventListener('beforeunload', e=>{
    localStorage (it is not a secret — it is designed for public client code).
    ========================================================================= */
 const GD_CID_KEY = 'abp_gd_client_id';
+const GD_CONNECTED_KEY = 'abp_gd_connected';   // flag: user has connected before -> attempt silent reconnect on load
 // Built-in OAuth Client ID so every user can just click "Connect" — no pasting.
 // A Client ID is PUBLIC by design (safe in client-side code); the Authorized
 // JavaScript origins restriction (engr-sharif.github.io) is what protects it.
@@ -2743,10 +2744,14 @@ function gdClientId(){ return ((localStorage.getItem(GD_CID_KEY)||'').trim()) ||
 function _gdResetBinding(){ _gdFileId=null; _gdFileName=null; }
 function gdSetMsg(m){ const el=$('gdMsg'); if(el) el.textContent=m; }
 function updateGdStatus(){
-  const s=$('gdStatus'); if(!s) return;
+  const s=$('gdStatus');
   const connected = _gdToken && Date.now()<_gdTokenExp;
-  s.textContent = connected ? 'Connected ✓' : (gdClientId()? 'Not connected' : 'Paste your Client ID first');
-  s.style.color = connected ? '#1a7f37' : 'var(--muted)';
+  if(s){
+    s.textContent = connected ? 'Connected ✓' : 'Not connected';
+    s.style.color = connected ? '#1a7f37' : 'var(--muted)';
+  }
+  const btn=$('gdConnect');
+  if(btn) btn.textContent = connected ? 'Disconnect' : 'Connect Google Drive';
 }
 function loadGIS(){
   return new Promise((res,rej)=>{
@@ -2768,6 +2773,7 @@ async function gdConnect(interactive){
         if(resp && resp.access_token){
           _gdToken=resp.access_token;
           _gdTokenExp=Date.now()+((resp.expires_in||3600)*1000)-60000;
+          try{ localStorage.setItem(GD_CONNECTED_KEY,'1'); }catch(e){}   // remember so we can silently reconnect on refresh
         }
         if(_gdPending){ const r=_gdPending; _gdPending=null; r(resp); }
         updateGdStatus();
@@ -2871,10 +2877,31 @@ async function gdLoadFile(id, name){
   }catch(e){ gdSetMsg('Drive load failed: '+e.message); }
 }
 
+// Silently re-acquire a token on page load if the user has connected before.
+// Google can return a fresh token with no popup when the user is still signed
+// into Google and previously granted consent — so "Connected" survives refresh.
+async function gdTrySilentRestore(){
+  if(localStorage.getItem(GD_CONNECTED_KEY)!=='1') return;   // never connected -> don't even load GIS
+  const s=$('gdStatus'); if(s){ s.textContent='Reconnecting…'; s.style.color='var(--muted)'; }
+  try{
+    const ok=await gdConnect(false);   // prompt:'' -> silent if possible
+    updateGdStatus();
+    if(!ok && s){ s.textContent='Not connected'; }
+  }catch(e){ updateGdStatus(); }
+}
+function gdDisconnect(){
+  _gdToken=null; _gdTokenExp=0; _gdFileId=null; _gdFileName=null;
+  try{ localStorage.removeItem(GD_CONNECTED_KEY); }catch(e){}
+  updateGdStatus(); gdSetMsg('Disconnected. Click Connect to sign in again.');
+}
+window.gdDisconnect = gdDisconnect;
+
 // ---- Drive UI wiring ----
 (function(){
   updateGdStatus();
   $('gdConnect').addEventListener('click', async ()=>{
+    // if already connected, clicking acts as "disconnect"
+    if(_gdToken && Date.now()<_gdTokenExp){ gdDisconnect(); return; }
     gdSetMsg('Opening Google sign-in…');
     const ok=await gdConnect(true);
     gdSetMsg(ok?'Connected to Google Drive.':'Not connected.');
@@ -2884,6 +2911,8 @@ async function gdLoadFile(id, name){
   $('gdOpen').addEventListener('click', gdOpenFromDrive);
   $('gdPickerClose').addEventListener('click', ()=>{ $('gdPickerModal').hidden=true; });
   $('gdPickerModal').addEventListener('click', e=>{ if(e.target.id==='gdPickerModal') $('gdPickerModal').hidden=true; });
+  // attempt silent reconnect shortly after load (deferred so it never blocks startup)
+  setTimeout(gdTrySilentRestore, 1200);
 })();
 // OM charts are built when the Stats tab is first activated (see activateTab).
 
