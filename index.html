@@ -900,26 +900,12 @@ body:not(.tab-open) #coords{left:0}
         <button class="btn primary" id="gdConnect" style="flex:none">Connect Google Drive</button>
         <span id="gdStatus" class="hint" style="flex:1">Not connected</span>
       </div>
-      <p class="hint" style="margin-top:4px">Just click Connect — no setup needed. (Advanced: override the built-in OAuth Client ID below if your team uses a different Google Cloud project.)</p>
-      <details style="margin-top:2px">
-        <summary class="hint" style="cursor:pointer">Advanced: OAuth Client ID</summary>
-        <div class="row" style="gap:4px;margin-top:4px">
-          <input type="text" id="gdClientId" placeholder="…apps.googleusercontent.com" style="flex:3;font-size:10px">
-          <button class="btn" id="gdSaveClientId" style="flex:none">Save</button>
-        </div>
-      </details>
+      <p class="hint" style="margin-top:4px">Click Connect, then use Save / Open to keep your work in your own Google Drive (folder: "ABP Visualizer Projects").</p>
       <div class="row" style="gap:4px;margin-top:6px">
         <button class="btn" id="gdSave" style="flex:1">☁ Save to Drive</button>
         <button class="btn" id="gdOpen" style="flex:1">☁ Open from Drive</button>
       </div>
       <div id="gdMsg" class="hint" style="margin-top:4px"></div>
-
-      <details style="margin-top:8px">
-        <summary class="hint" style="cursor:pointer">Network feasibility check</summary>
-        <p class="hint" style="margin-top:4px">Tests whether this network allows Google sign-in + the Drive API. Run it on the deployed page, not a local copy.</p>
-        <button class="btn" id="gdriveTest" style="width:100%">Test Google connectivity</button>
-        <div id="gdriveTestOut" style="margin-top:6px;font-size:11px"></div>
-      </details>
     </div>
   </div>
 
@@ -2734,48 +2720,6 @@ window.addEventListener('beforeunload', e=>{
   if(_dirty){ e.preventDefault(); e.returnValue=''; return ''; }
 });
 
-// ---- Google Drive connectivity probe -------------------------------------
-// Decides whether in-app Drive sync is even possible on this network, before we
-// invest in the OAuth integration. Script-tag loads bypass CORS (clean onload/
-// onerror); the API host is probed with a no-cors fetch (resolve = reachable).
-function _scriptReach(url){
-  return new Promise(res=>{
-    const s=document.createElement('script'); let done=false;
-    const fin=ok=>{ if(done) return; done=true; try{s.remove();}catch(e){} res(ok); };
-    s.onload=()=>fin(true); s.onerror=()=>fin(false); s.src=url;
-    document.head.appendChild(s); setTimeout(()=>fin(false), 8000);
-  });
-}
-async function _fetchReach(url){
-  try{ const c=new AbortController(); const t=setTimeout(()=>c.abort(),8000);
-    await fetch(url,{mode:'no-cors',signal:c.signal}); clearTimeout(t); return true;
-  }catch(e){ return false; }
-}
-async function testGoogleConnectivity(){
-  const out=$('gdriveTestOut'); const btn=$('gdriveTest');
-  btn.disabled=true; out.innerHTML='<i>Testing… (up to ~8s per endpoint)</i>';
-  const checks=[
-    { label:'Google sign-in (Identity Services)', url:'https://accounts.google.com/gsi/client', kind:'script' },
-    { label:'Google API loader',                  url:'https://apis.google.com/js/api.js',     kind:'script' },
-    { label:'Drive API host',                     url:'https://www.googleapis.com/discovery/v1/apis', kind:'fetch' },
-  ];
-  const results=[];
-  for(const c of checks){
-    const ok = c.kind==='script' ? await _scriptReach(c.url) : await _fetchReach(c.url);
-    results.push({...c, ok});
-  }
-  const allOk=results.every(r=>r.ok);
-  const isLocal = location.protocol==='file:' || /^(127\.|localhost)/.test(location.hostname);
-  out.innerHTML =
-    results.map(r=>`<div>${r.ok?'✓':'✗'} ${r.label} <span style="color:var(--muted);font-size:9px">${r.url.replace('https://','')}</span></div>`).join('')
-    + `<div style="margin-top:6px;font-weight:600;color:${allOk?'#1a7f37':'#b91c1c'}">${
-        allOk ? '✓ Reachable — in-app Google Drive sync is feasible on this network.'
-              : '✗ At least one endpoint is blocked — in-app Drive sync likely will not work here. Use the project-file + shared-folder workflow instead.'}</div>`
-    + (isLocal ? `<div class="hint" style="margin-top:4px">Note: you're on a local/preview copy. Re-run this on the deployed page (engr-sharif.github.io) for an accurate result.</div>` : '');
-  btn.disabled=false;
-}
-$('gdriveTest').addEventListener('click', testGoogleConnectivity);
-
 /* =========================================================================
    GOOGLE DRIVE SYNC — client-side (Google Identity Services token model +
    Drive REST v3). Uses the drive.file scope: the app can only see files it
@@ -2929,15 +2873,7 @@ async function gdLoadFile(id, name){
 
 // ---- Drive UI wiring ----
 (function(){
-  const cidInput=$('gdClientId');
-  if(cidInput) cidInput.value=gdClientId();
   updateGdStatus();
-  $('gdSaveClientId').addEventListener('click', ()=>{
-    const v=(cidInput.value||'').trim();
-    localStorage.setItem(GD_CID_KEY, v);
-    _tokenClient=null; _gdToken=null;     // force re-init with the new id
-    updateGdStatus(); gdSetMsg(v?'Client ID saved. Click Connect Google Drive.':'Client ID cleared.');
-  });
   $('gdConnect').addEventListener('click', async ()=>{
     gdSetMsg('Opening Google sign-in…');
     const ok=await gdConnect(true);
