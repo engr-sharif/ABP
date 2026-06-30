@@ -2727,7 +2727,13 @@ window.addEventListener('beforeunload', e=>{
    localStorage (it is not a secret — it is designed for public client code).
    ========================================================================= */
 const GD_CID_KEY = 'abp_gd_client_id';
-const GD_CONNECTED_KEY = 'abp_gd_connected';   // flag: user has connected before -> attempt silent reconnect on load
+const GD_CONNECTED_KEY = 'abp_gd_connected';   // flag: user has connected before
+const GD_TOK_KEY = 'abp_gd_token';             // cached access token + expiry (see note below)
+// NOTE: we cache the short-lived (~1h) access token in localStorage so a page
+// refresh stays "Connected" without a popup — Google's browser token flow has
+// no silent background refresh, and auto-firing the popup on load just gets
+// blocked. The token is limited to the drive.file scope (only files this app
+// created) and self-expires within the hour. The client *secret* is never stored.
 // Built-in OAuth Client ID so every user can just click "Connect" — no pasting.
 // A Client ID is PUBLIC by design (safe in client-side code); the Authorized
 // JavaScript origins restriction (engr-sharif.github.io) is what protects it.
@@ -2741,6 +2747,13 @@ let _gisLoaded=false, _tokenClient=null, _gdToken=null, _gdTokenExp=0, _gdPendin
 let _gdFileId=null, _gdFileName=null;
 
 function gdClientId(){ return ((localStorage.getItem(GD_CID_KEY)||'').trim()) || GD_DEFAULT_CID; }
+function gdStoreToken(){ try{ localStorage.setItem(GD_TOK_KEY, JSON.stringify({t:_gdToken, e:_gdTokenExp})); }catch(e){} }
+function gdLoadStoredToken(){
+  try{ const o=JSON.parse(localStorage.getItem(GD_TOK_KEY)||'null');
+    if(o && o.t && o.e && Date.now()<o.e){ _gdToken=o.t; _gdTokenExp=o.e; return true; } }catch(e){}
+  return false;
+}
+function gdClearStoredToken(){ try{ localStorage.removeItem(GD_TOK_KEY); }catch(e){} }
 function _gdResetBinding(){ _gdFileId=null; _gdFileName=null; }
 function gdSetMsg(m){ const el=$('gdMsg'); if(el) el.textContent=m; }
 function updateGdStatus(){
@@ -2773,7 +2786,8 @@ async function gdConnect(interactive){
         if(resp && resp.access_token){
           _gdToken=resp.access_token;
           _gdTokenExp=Date.now()+((resp.expires_in||3600)*1000)-60000;
-          try{ localStorage.setItem(GD_CONNECTED_KEY,'1'); }catch(e){}   // remember so we can silently reconnect on refresh
+          try{ localStorage.setItem(GD_CONNECTED_KEY,'1'); }catch(e){}
+          gdStoreToken();   // cache so a refresh stays connected for the token's ~1h life
         }
         if(_gdPending){ const r=_gdPending; _gdPending=null; r(resp); }
         updateGdStatus();
@@ -2789,14 +2803,17 @@ async function gdConnect(interactive){
 }
 async function gdEnsureToken(){
   if(_gdToken && Date.now()<_gdTokenExp) return _gdToken;
-  const ok=await gdConnect(false);   // try silent first; GIS will prompt if needed
+  if(gdLoadStoredToken()) return _gdToken;          // another tab/refresh may hold a still-valid token
+  // Token model needs a user gesture for the popup. Callers here (Save/Open/
+  // Connect) are all button clicks, so an interactive request is allowed.
+  const ok=await gdConnect(true);
   return ok ? _gdToken : null;
 }
 async function gdFetch(url, opts){
   const t=await gdEnsureToken(); if(!t) throw new Error('Not connected to Google Drive');
   opts=opts||{}; opts.headers=Object.assign({Authorization:'Bearer '+t}, opts.headers||{});
   const r=await fetch(url, opts);
-  if(r.status===401){ _gdToken=null; throw new Error('Drive session expired — click Connect again'); }
+  if(r.status===401){ _gdToken=null; _gdTokenExp=0; gdClearStoredToken(); updateGdStatus(); throw new Error('Drive session expired — click Connect again'); }
   if(!r.ok){ throw new Error('Drive API '+r.status+': '+(await r.text()).slice(0,160)); }
   return r;
 }
@@ -2877,20 +2894,18 @@ async function gdLoadFile(id, name){
   }catch(e){ gdSetMsg('Drive load failed: '+e.message); }
 }
 
-// Silently re-acquire a token on page load if the user has connected before.
-// Google can return a fresh token with no popup when the user is still signed
-// into Google and previously granted consent — so "Connected" survives refresh.
-async function gdTrySilentRestore(){
-  if(localStorage.getItem(GD_CONNECTED_KEY)!=='1') return;   // never connected -> don't even load GIS
-  const s=$('gdStatus'); if(s){ s.textContent='Reconnecting…'; s.style.color='var(--muted)'; }
-  try{
-    const ok=await gdConnect(false);   // prompt:'' -> silent if possible
-    updateGdStatus();
-    if(!ok && s){ s.textContent='Not connected'; }
-  }catch(e){ updateGdStatus(); }
+// On page load, reuse the cached token if it's still valid — no popup, no
+// Google round-trip. (Auto-firing the sign-in popup on load doesn't work: the
+// browser blocks gesture-less popups, which is what hung at "Reconnecting…".)
+function gdRestoreOnLoad(){
+  if(gdLoadStoredToken()){ updateGdStatus(); return; }          // still-valid token -> Connected, silently
+  updateGdStatus();
+  if(localStorage.getItem(GD_CONNECTED_KEY)==='1')
+    gdSetMsg('Your Google Drive session expired — click Connect to resume.');
 }
 function gdDisconnect(){
   _gdToken=null; _gdTokenExp=0; _gdFileId=null; _gdFileName=null;
+  gdClearStoredToken();
   try{ localStorage.removeItem(GD_CONNECTED_KEY); }catch(e){}
   updateGdStatus(); gdSetMsg('Disconnected. Click Connect to sign in again.');
 }
@@ -2911,8 +2926,8 @@ window.gdDisconnect = gdDisconnect;
   $('gdOpen').addEventListener('click', gdOpenFromDrive);
   $('gdPickerClose').addEventListener('click', ()=>{ $('gdPickerModal').hidden=true; });
   $('gdPickerModal').addEventListener('click', e=>{ if(e.target.id==='gdPickerModal') $('gdPickerModal').hidden=true; });
-  // attempt silent reconnect shortly after load (deferred so it never blocks startup)
-  setTimeout(gdTrySilentRestore, 1200);
+  // restore from the cached token on load (instant, no popup, no network)
+  gdRestoreOnLoad();
 })();
 // OM charts are built when the Stats tab is first activated (see activateTab).
 
