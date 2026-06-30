@@ -2439,6 +2439,35 @@ function scheduleAutosave(){
   if(!$('autoSave') || !$('autoSave').checked) return;
   clearTimeout(autosaveTimer); autosaveTimer=setTimeout(()=>saveSession(true), 700);
 }
+// Analysis/view sub-controls whose values are NOT held in STATE — captured
+// generically so a saved session restores heat/IDW/HI/grid/delineation settings,
+// cluster mode, and draw styles exactly, not just their on/off toggles.
+const PERSIST_CONTROLS = [
+  'toggleCluster',
+  'heatAnalyte','heatLog','heatOp','heatRadius','heatBlur','heatMax',
+  'idwAnalyte','idwOp','idwPow','idwRes',
+  'hiOp','hiPow','hiRes',
+  'gridSize',
+  'delinAnalyte','delinRadFt','delinDepth','delinSmooth','delinShowPts',
+  'styleStroke','styleFill','styleWeight','styleFillOp','styleDash',
+  'digDepth','xsAnalyte','timeSlider',
+  'expName','expFormat','expScale','printOrient',
+];
+function captureControls(){
+  const o={};
+  PERSIST_CONTROLS.forEach(id=>{ const el=$(id); if(el) o[id]=(el.type==='checkbox')?el.checked:el.value; });
+  return o;
+}
+function restoreControls(c){
+  if(!c) return;
+  PERSIST_CONTROLS.forEach(id=>{
+    const el=$(id); if(!el || c[id]==null) return;
+    if(el.type==='checkbox') el.checked=!!c[id]; else el.value=c[id];
+    // fire the control's own handler so readout labels + overlays re-sync
+    const evt=(el.type==='range')?'input':'change';
+    try{ el.dispatchEvent(new Event(evt,{bubbles:true})); }catch(e){}
+  });
+}
 function sessionData(){
   return {
     colorBy:STATE.colorBy, analyte:STATE.analyte,
@@ -2454,6 +2483,8 @@ function sessionData(){
     dark:document.body.classList.contains('dark'),
     titlePos:(function(){ const tb=$('titleBlock'); return tb.classList.contains('placed')?{left:tb.style.left,top:tb.style.top}:null; })(),
     shapes:shapesToGeoJSON(),
+    controls:captureControls(),                  // heat/IDW/HI/grid/delineation params, cluster mode, draw styles
+    pointMode: window.STATE_pointMode || 'normal',
     du: (typeof STATE!=='undefined' && STATE.du) ? STATE.du : null  // SECTION — DECISION UNITS & SCENARIOS
   };
 }
@@ -2584,10 +2615,14 @@ function applySession(d, silent){
   if(d.showTitleBlock){ $('showTitleBlock').checked=true; $('titleBlock').classList.add('show'); }
   if(d.titlePos && d.titlePos.left){ const tb=$('titleBlock'); tb.classList.add('placed'); tb.style.left=d.titlePos.left; tb.style.top=d.titlePos.top; tb.style.right='auto'; }
   applyTheme(!!d.dark);
+  // restore analysis sub-control values (heat/IDW/HI/grid/delineation params,
+  // draw styles, cluster mode) BEFORE the overlays regenerate below
+  restoreControls(d.controls);
+  if(d.pointMode==='cluster' && typeof setPointMode==='function'){ const cb=$('toggleCluster'); if(cb) cb.checked=true; setPointMode('cluster'); }
   drawnItems.clearLayers(); loadShapesGeoJSON(d.shapes);
   if(d.du && typeof mergeDUStateFromSession==='function') mergeDUStateFromSession(d.du);   // SECTION — DECISION UNITS & SCENARIOS
   if(typeof refreshDUUI==='function') refreshDUUI();
-  syncControlVisibility(); applyDisplay(); applyFilters(); updateGrid();
+  syncControlVisibility(); applyDisplay(); applyFilters(); updateGrid(); updateHeat(); updateIDW(); updateHI();
   if(typeof buildLegend==='function') buildLegend();
   // restore the last-active tab (null = clean map with no panel open)
   if(d.activeTab && document.querySelector('.tab-btn[data-tab="'+d.activeTab+'"]')){
