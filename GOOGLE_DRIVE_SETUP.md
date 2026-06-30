@@ -88,11 +88,22 @@ This is the "who is this app and what does it ask for" screen users see.
 
 ## Step 5 — Give the Client ID to the app
 
-Once you have the Client ID, the app needs it. We'll wire a small config so you
-paste it into a field in the app (stored in your browser) — no code edit, no
-secret committed to the repo. (I'll build this part once your connectivity test
-passes and you have the ID. The Client ID is not a secret — it's safe in
-client-side code — but keeping it in a settings field avoids hardcoding it.)
+The app has a field for it (no code edit needed):
+
+1. Open the app → **Export** tab → **Google Drive sync**.
+2. Paste your Client ID into the **OAuth Client ID** field → click **Save**.
+   (It's stored in your browser's localStorage. The Client ID is not a secret —
+   it's designed to live in public client-side code — so this is safe.)
+3. Click **Connect Google Drive** → a Google sign-in popup appears → choose your
+   account → grant the `drive.file` permission.
+4. Status flips to **Connected ✓**. Now:
+   - **☁ Save to Drive** uploads the current project into a folder named
+     **"ABP Visualizer Projects"** in your Drive. The first save creates the
+     file; later saves update that same file.
+   - **☁ Open from Drive** lists your `.abp.json` projects → pick one → it loads,
+     and subsequent **Save to Drive** updates that file.
+
+Access tokens last ~1 hour; if it expires, click **Connect Google Drive** again.
 
 ## Step 6 — Publishing (External apps only)
 
