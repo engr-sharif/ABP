@@ -130,11 +130,21 @@ body.tab-open #panel{transform:translateX(0)}
 .du-action-HandExcavate{background:#fdae61 !important;border-color:#d68a3a !important}
 .du-action-ExcavateConsolidate{background:#d7191c !important;border-color:#d7191c !important}
 .du-action-Undecided{background:#9e9e9e !important;border-color:#9e9e9e !important}
-.du-list-item{display:flex;justify-content:space-between;align-items:center;padding:5px 7px;margin:3px 0;
-  border:1px solid var(--line);border-radius:5px;font-size:11px;background:var(--card);cursor:pointer}
+.du-list-item{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:5px 7px;margin:3px 0;
+  border:1px solid var(--line);border-radius:5px;font-size:11px;background:var(--card)}
 .du-list-item:hover{background:#f0f4ff}
 .du-list-item.active{outline:2px solid #2b8cbe}
-.du-list-item .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.du-list-item .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.du-li-main{flex:1;min-width:0;cursor:pointer}
+.du-li-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.du-li-sub{color:var(--muted);font-size:10px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.du-li-actions{display:flex;gap:2px;flex:none}
+.du-li-btn{border:1px solid var(--line);background:var(--card);border-radius:4px;cursor:pointer;
+  font-size:12px;line-height:1;padding:3px 6px;color:var(--ink)}
+.du-li-btn:hover{background:#e8eef5}
+body.dark .du-li-btn:hover{background:#27324a}
+.du-li-del:hover{background:#fde2e2;border-color:#f5b5b5;color:#b91c1c}
+body.dark .du-li-del:hover{background:#3d1d1d;border-color:#5c2a2a;color:#ff9a9a}
 .du-pass{display:inline-block;padding:1px 8px;border-radius:3px;font-weight:700;font-size:10px;background:#1a9641;color:#fff}
 .du-act{display:inline-block;padding:1px 8px;border-radius:3px;font-weight:700;font-size:10px;background:#d7191c;color:#fff}
 .du-tbd{display:inline-block;padding:1px 8px;border-radius:3px;font-weight:700;font-size:10px;background:#9e9e9e;color:#fff}
@@ -382,9 +392,26 @@ body:not(.tab-open) #coords{left:0}
       <textarea id="duEdit_notes" rows="2"></textarea>
     </div>
     <div class="du-modal-foot">
+      <button class="btn" id="duModalUnmark" title="Keep the shape on the map but remove its Decision Unit status" style="margin-right:auto;color:var(--muted)">Unmark (keep shape)</button>
       <span id="duModalMsg" class="du-modal-msg"></span>
       <button class="btn" id="duModalCancel">Cancel</button>
       <button class="btn primary" id="duModalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Expanded chart modal (OM correlations etc.) -->
+<div id="chartModal" class="du-modal-overlay" hidden>
+  <div class="du-modal" style="width:760px;max-width:94vw">
+    <div class="du-modal-head">
+      <h3 id="chartModalTitle">Chart</h3>
+      <button id="chartModalClose" class="du-modal-x" aria-label="close">✕</button>
+    </div>
+    <div class="du-modal-body" style="padding:14px 16px">
+      <div style="position:relative;height:62vh;min-height:380px">
+        <canvas id="chartModalCanvas"></canvas>
+      </div>
+      <p class="hint" id="chartModalHint" style="margin-top:8px"></p>
     </div>
   </div>
 </div>
@@ -653,10 +680,10 @@ body:not(.tab-open) #coords{left:0}
       <div class="du-sub" id="duSub-units">
         <h3>Decision Units <span class="chev">▾</span></h3>
         <div class="body">
-          <label class="checkrow"><input type="checkbox" id="duAutoMark"> Mark next drawn shape as DU</label>
+          <button class="btn primary" id="duNewBtn" style="width:100%;margin-bottom:6px">+ New DU (draw on map)</button>
           <label class="checkrow"><input type="checkbox" id="duColorByAction" checked> Color DUs by action</label>
-          <label class="field">DUs in active scenario</label>
-          <div id="duList" style="font-size:11px;color:var(--muted)">No DUs yet — draw a polygon, circle, or rectangle and click "Mark as DU" in its popup.</div>
+          <label class="field">DUs in active scenario <span id="duCountTag" class="hint" style="font-weight:400"></span></label>
+          <div id="duList" style="font-size:11px;color:var(--muted)">No DUs yet — click "+ New DU" above, or draw a shape and use "Mark as DU" in its popup.</div>
         </div>
       </div>
 
@@ -678,12 +705,19 @@ body:not(.tab-open) #coords{left:0}
       <div class="du-sub closed" id="duSub-compare">
         <h3>Compare scenarios <span class="chev">▾</span></h3>
         <div class="body">
+          <label class="field" style="margin-top:0">Scenario rollup (one row per scenario)</label>
           <div class="row" style="gap:4px;flex-wrap:wrap">
             <button class="btn" id="duCompareRender" style="flex:1;min-width:80px">Refresh table</button>
             <button class="btn" id="duCompareCopy" style="flex:1;min-width:80px">Copy TSV</button>
             <button class="btn" id="duCompareCSV" style="flex:1;min-width:80px">Download CSV</button>
           </div>
           <div id="duCompareOut" style="margin-top:8px;overflow-x:auto"></div>
+          <label class="field">Per-DU statistics (one row per DU)</label>
+          <p class="hint" style="margin-top:0">Full stats behind each DU's PASS/ACT call — mean, max, UCL-t, UCL-C, %&gt;ROD, %&gt;PMB for every analyte, plus depth, volume, Hg mass, and the call under both standards.</p>
+          <div class="row" style="gap:4px;flex-wrap:wrap">
+            <button class="btn" id="duStatsCopy" style="flex:1;min-width:80px">Copy TSV</button>
+            <button class="btn" id="duStatsCSV" style="flex:1;min-width:80px">Download CSV</button>
+          </div>
         </div>
       </div>
 
@@ -1543,6 +1577,13 @@ function activateTab(name){
   }
   // Map size does not change on tab toggle (panel overlays the map), so no
   // invalidateSize is needed — that call was the source of the jitter.
+  // Build the OM charts the first time the Stats tab is shown. They cannot be
+  // built earlier because Chart.js needs the canvas to have layout dimensions,
+  // and a hidden tab-pane has none. (The old click-on-header trigger died when
+  // the section moved into a tab where the h2 is pointer-events:none.)
+  if(STATE.activeTab === 'stats' && !omBuilt && typeof buildOmChart === 'function'){
+    setTimeout(buildOmChart, 80);
+  }
   scheduleAutosave();
 }
 document.querySelectorAll('.tab-btn').forEach(b => {
@@ -1887,8 +1928,12 @@ map.on('pm:create', e=>{
   const layer = e.layer;
   applyShapeStyle(layer);
   drawnItems.addLayer(layer);
-  // SECTION — DECISION UNITS & SCENARIOS: auto-promote to DU if the toggle is on
-  if(typeof maybeAutoPromoteToDU === 'function') maybeAutoPromoteToDU(layer);
+  // SECTION — DECISION UNITS & SCENARIOS:
+  // 1) the "+ New DU" flow forces promotion + opens the edit modal;
+  // 2) otherwise honour the "mark next drawn shape as DU" toggle.
+  let promoted = false;
+  if(typeof consumePendingNewDU === 'function') promoted = consumePendingNewDU(layer);
+  if(!promoted && typeof maybeAutoPromoteToDU === 'function') maybeAutoPromoteToDU(layer);
   attachShapeInfo(layer);
   layer.on('pm:edit pm:dragend pm:markerdragend pm:update', ()=>{
     if(typeof onShapeEdited === 'function') onShapeEdited(layer);
@@ -1896,7 +1941,16 @@ map.on('pm:create', e=>{
   });
   scheduleAutosave();
 });
-map.on('pm:remove', ()=>scheduleAutosave());
+// When any shape is removed via Geoman's erase tool, if it was a DU, refresh the
+// DU list + comparison table so the panel reflects the deletion.
+map.on('pm:remove', e=>{
+  const wasDU = e && e.layer && e.layer.duMeta;
+  if(wasDU && typeof refreshDUUI === 'function'){
+    refreshDUUI();
+    const out = document.getElementById('duCompareOut'); if(out && out.innerHTML && typeof window.renderCompareTable==='function') window.renderCompareTable();
+  }
+  scheduleAutosave();
+});
 
 function shapesToGeoJSON(){
   const fc = { type:'FeatureCollection', features:[] };
@@ -1947,28 +2001,118 @@ $('digDepth').addEventListener('change', ()=>{ drawnItems.eachLayer(l=>attachSha
    ========================================================================= */
 let omChart=null, omDeepChart=null, omBuilt=false;
 const OM_COLOR = {'OM higher':'#d7191c','OM lower':'#2c7bb6','~equal':'#9e9e9e'};
-function omScatter(canvasId, xField, xLabel, currentChart){
+
+// Crosshair plugin — draws dotted x/y lines that track the cursor and a small
+// coordinate readout. Only active on charts that opt in via options.plugins.crosshair.
+const crosshairPlugin = {
+  id: 'crosshair',
+  afterEvent(chart, args){
+    const e = args.event;
+    if(!chart.options.plugins.crosshair || !chart.options.plugins.crosshair.enabled) return;
+    if(e.type === 'mousemove'){ chart._chPos = { x:e.x, y:e.y }; }
+    else if(e.type === 'mouseout'){ chart._chPos = null; }
+    args.changed = true;
+  },
+  afterDraw(chart){
+    const cfg = chart.options.plugins.crosshair;
+    if(!cfg || !cfg.enabled || !chart._chPos) return;
+    const { x, y } = chart._chPos;
+    const area = chart.chartArea;
+    if(x < area.left || x > area.right || y < area.top || y > area.bottom) return;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.setLineDash([4,4]); ctx.lineWidth = 1; ctx.strokeStyle = cfg.color || 'rgba(120,120,120,.9)';
+    ctx.beginPath(); ctx.moveTo(x, area.top);    ctx.lineTo(x, area.bottom); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(area.left, y);   ctx.lineTo(area.right, y);  ctx.stroke();
+    // value readout
+    const xv = chart.scales.x.getValueForPixel(x);
+    const yv = chart.scales.y.getValueForPixel(y);
+    const txt = `x ${xv>=10?xv.toFixed(0):xv.toFixed(1)}  ·  y ${yv>=10?yv.toFixed(0):yv.toFixed(1)}`;
+    ctx.setLineDash([]); ctx.font = '11px -apple-system,Segoe UI,Roboto,sans-serif';
+    const w = ctx.measureText(txt).width + 10;
+    ctx.fillStyle = 'rgba(20,28,38,.86)';
+    ctx.fillRect(Math.min(x+8, area.right-w), Math.max(y-20, area.top+2), w, 16);
+    ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle';
+    ctx.fillText(txt, Math.min(x+13, area.right-w+5), Math.max(y-12, area.top+10));
+    ctx.restore();
+  }
+};
+if(typeof Chart !== 'undefined') Chart.register(crosshairPlugin);
+
+// Build the dataset + options config for an OM scatter. crosshair=true enables
+// the cursor crosshair (used in the expanded modal view).
+function omChartConfig(xField, xLabel, crosshair){
   const r2 = DATA.features.filter(f=>f.properties.round===2 && isNum(f.properties.Hg_OM) && isNum(f.properties[xField]));
-  if(!r2.length){ const el=$(canvasId); if(el) el.style.display='none'; return null; }
+  if(!r2.length) return null;
   const groups={};
   r2.forEach(f=>{ const k=f.properties.OM_effect||'?'; (groups[k]=groups[k]||[]).push({x:f.properties[xField], y:f.properties.Hg_OM, id:f.properties.id}); });
-  const ds = Object.keys(groups).map(k=>({ label:k, data:groups[k], backgroundColor:OM_COLOR[k]||'#666', pointRadius:4 }));
+  const ds = Object.keys(groups).map(k=>({ label:k, data:groups[k], backgroundColor:OM_COLOR[k]||'#666', pointRadius:crosshair?5:4, pointHoverRadius:crosshair?8:6 }));
   const maxV = Math.max(...r2.map(f=>Math.max(f.properties[xField], f.properties.Hg_OM)));
   ds.push({ label:'1:1', type:'line', data:[{x:1,y:1},{x:maxV,y:maxV}], borderColor:'#222', borderDash:[5,4], pointRadius:0, fill:false });
   ds.push({ label:'ROD '+CRITERIA.ROD.Hg, type:'line', data:[{x:1,y:CRITERIA.ROD.Hg},{x:maxV,y:CRITERIA.ROD.Hg}], borderColor:'#d7191c', borderDash:[3,3], pointRadius:0, fill:false });
-  if(currentChart) currentChart.destroy();
-  return new Chart($(canvasId), { type:'scatter', data:{datasets:ds}, options:{
-    responsive:true, animation:false,
+  ds.push({ label:'Background '+((CRITERIA.PMB||{}).Hg||58), type:'line', data:[{x:1,y:(CRITERIA.PMB||{}).Hg||58},{x:maxV,y:(CRITERIA.PMB||{}).Hg||58}], borderColor:'#2c7bb6', borderDash:[2,3], pointRadius:0, fill:false });
+  return { type:'scatter', data:{datasets:ds}, options:{
+    responsive:true, maintainAspectRatio:!crosshair, animation:false,   // modal (crosshair) fills its sized container; inline keeps aspect
+    interaction:{ mode:'nearest', intersect:true },
     scales:{ x:{type:'logarithmic',title:{display:true,text:xLabel}},
              y:{type:'logarithmic',title:{display:true,text:'OM Hg (mg/kg)'}} },
-    plugins:{ legend:{labels:{boxWidth:12,font:{size:10}}},
-      tooltip:{callbacks:{label:c=>c.raw && c.raw.id ? `${c.raw.id}: ${c.raw.x}, OM ${c.raw.y}` : ''}} }
-  }});
+    plugins:{ legend:{labels:{boxWidth:12,font:{size:crosshair?12:10}}},
+      crosshair:{ enabled:!!crosshair },
+      tooltip:{callbacks:{label:c=>c.raw && c.raw.id ? `${c.raw.id}: ${xLabel.split(' ')[0]} ${c.raw.x}, OM ${c.raw.y}` : ''}} }
+  }};
+}
+function omScatter(canvasId, xField, xLabel, currentChart){
+  const cfg = omChartConfig(xField, xLabel, false);
+  const el = $(canvasId);
+  if(!cfg){ if(el) el.style.display='none'; return null; }
+  if(el) el.style.display='';
+  if(currentChart) currentChart.destroy();
+  const chart = new Chart(el, cfg);
+  // store the params so the expand-modal can rebuild a crosshair version
+  el._omParams = { xField, xLabel, title:'OM Hg vs '+xLabel };
+  el.style.cursor = 'zoom-in';
+  el.title = 'Click to expand with crosshair';
+  return chart;
 }
 function buildOmChart(){
   omChart     = omScatter('omChart',     'Hg',      'Shallow soil Hg (mg/kg)', omChart);
   omDeepChart = omScatter('omDeepChart', 'Hg_deep', 'Deep soil Hg (mg/kg)',    omDeepChart);
   omBuilt = true;
+  wireChartExpand();
+}
+
+// ---- Expandable chart modal ----------------------------------------------
+let _modalChart = null;
+function openChartModal(params){
+  const cfg = omChartConfig(params.xField, params.xLabel, true);
+  if(!cfg) return;
+  document.getElementById('chartModalTitle').textContent = params.title || 'Chart';
+  document.getElementById('chartModalHint').textContent =
+    'Move the cursor for a crosshair readout. Dashed lines: 1:1 (OM = soil), ROD 204, Background 58. Both axes are log scale. Red = OM higher than soil, blue = OM lower.';
+  document.getElementById('chartModal').hidden = false;
+  if(_modalChart){ _modalChart.destroy(); _modalChart = null; }
+  // build after the modal is visible so the canvas has size
+  setTimeout(() => { _modalChart = new Chart(document.getElementById('chartModalCanvas'), cfg); }, 30);
+}
+function closeChartModal(){
+  document.getElementById('chartModal').hidden = true;
+  if(_modalChart){ _modalChart.destroy(); _modalChart = null; }
+}
+function wireChartExpand(){
+  ['omChart','omDeepChart'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el && !el._expandWired){
+      el._expandWired = true;
+      el.addEventListener('click', () => { if(el._omParams) openChartModal(el._omParams); });
+    }
+  });
+  const cm = document.getElementById('chartModal');
+  if(cm && !cm._wired){
+    cm._wired = true;
+    document.getElementById('chartModalClose').addEventListener('click', closeChartModal);
+    cm.addEventListener('click', e => { if(e.target.id === 'chartModal') closeChartModal(); });
+    document.addEventListener('keydown', e => { if(e.key === 'Escape' && !cm.hidden) closeChartModal(); });
+  }
 }
 
 /* =========================================================================
@@ -2267,11 +2411,7 @@ $('themeToggle').addEventListener('click', ()=>{
 // session
 $('saveSession').addEventListener('click', saveSession);
 $('loadSession').addEventListener('click', ()=>loadSession(false));
-// build OM chart lazily when its section is first opened
-document.querySelector('[data-sec="om"] > h2').addEventListener('click', ()=>{
-  const sec=document.querySelector('[data-sec="om"]');
-  if(!sec.classList.contains('closed') && !omBuilt) setTimeout(buildOmChart,60);
-});
+// OM charts are built when the Stats tab is first activated (see activateTab).
 
 // extend applyDisplay (Phase 1 version) to refresh stats + density layers
 const _applyDisplay = applyDisplay;
@@ -3026,8 +3166,8 @@ function fitToData(){
         <br><b>Screening only</b> — formal ROD compliance is per Exposure Unit via ProUCL.
       </div>
       <div class="row" style="margin-top:6px;gap:4px;flex-wrap:wrap">
-        <button class="du-mini-btn" onclick="window.duEditPrompt('${meta.id}')">Edit DU…</button>
-        <button class="du-mini-btn" onclick="window.duUnmark('${meta.id}')">Unmark</button>
+        <button class="du-mini-btn" onclick="window.duEditPrompt('${meta.id}')">✎ Edit DU…</button>
+        <button class="du-mini-btn du-li-del" onclick="window.duDeleteById('${meta.id}')">🗑 Delete</button>
       </div>
     </div>`;
   }
@@ -3188,6 +3328,7 @@ function fitToData(){
   _$('duModalCancel').addEventListener('click', _closeDuModal);
   _$('duModalClose').addEventListener('click', _closeDuModal);
   _$('duModalSave').addEventListener('click', _saveDuModal);
+  _$('duModalUnmark').addEventListener('click', () => { if(_duModalEditingId) window.duUnmark(_duModalEditingId); });
   _$('duEditModal').addEventListener('click', e => { if(e.target.id === 'duEditModal') _closeDuModal(); });
   _$('duEdit_action').addEventListener('change', e => {
     _toggleConditionalRows(e.target.value);
@@ -3237,8 +3378,53 @@ function fitToData(){
   });
   window.duUnmark = function(duId){
     const l = findDUById(duId); if(!l) return;
-    if(!confirm(`Unmark "${l.duMeta.name}"? The shape will remain on the map but will no longer be a DU.`)) return;
+    if(!confirm(`Unmark "${l.duMeta.name}"? The shape stays on the map as a plain drawing but is no longer a Decision Unit (its stats/PASS-ACT call go away).`)) return;
     unmarkDU(l);
+    _closeDuModal && _closeDuModal();
+  };
+
+  // Zoom to a DU and open its popup (row-body click + the ⌖ button).
+  function duZoomTo(duId){
+    const l = findDUById(duId); if(!l) return;
+    if(l.getBounds) map.fitBounds(l.getBounds(), { padding:[40,40], maxZoom:19 });
+    else if(l.getLatLng) map.setView(l.getLatLng(), Math.max(map.getZoom(), 18));
+    if(l.openPopup) l.openPopup();
+  }
+  // Delete a DU entirely — removes the shape from the map AND updates the list,
+  // comparison table, and session. This is the primary "get rid of it" action.
+  function duDeleteById(duId){
+    const l = findDUById(duId); if(!l) return;
+    const name = (l.duMeta && l.duMeta.name) || 'this DU';
+    if(!confirm(`Delete "${name}"? This removes the Decision Unit and its shape from the map. (To keep the shape but drop only its DU status, use "Unmark" inside Edit DU.)`)) return;
+    if(l.closePopup) l.closePopup();
+    drawnItems.removeLayer(l);
+    refreshDUUI();
+    const out = document.getElementById('duCompareOut'); if(out && out.innerHTML) renderCompareTable();
+    scheduleAutosave();
+  }
+  window.duDeleteById = duDeleteById;
+
+  // "+ New DU" — enter polygon draw mode; the next shape auto-promotes to a DU
+  // in the active scenario and immediately opens its edit modal.
+  let _pendingNewDU = false;
+  function startNewDU(){
+    _pendingNewDU = true;
+    try { map.pm.enableDraw('Polygon', { snappable:true, snapDistance:18 }); }
+    catch(e){ _pendingNewDU = false; alert('Could not start drawing: ' + e.message); }
+  }
+  window.startNewDU = startNewDU;
+  // Hook the global pm:create so a shape drawn via "+ New DU" auto-promotes.
+  // (The general pm:create handler in the Draw section calls maybeAutoPromoteToDU;
+  // this flag forces promotion + edit for the dedicated New-DU flow.)
+  window.consumePendingNewDU = function(layer){
+    if(!_pendingNewDU) return false;
+    _pendingNewDU = false;
+    if(!(layer instanceof L.Polygon || layer instanceof L.Circle)) return false;
+    if(promoteToDU(layer)){
+      setTimeout(() => window.duEditPrompt(layer.duMeta.id), 60);
+      return true;
+    }
+    return false;
   };
 
   // ---- scenario rollup ---------------------------------------------------
@@ -3381,6 +3567,65 @@ function fitToData(){
     return lines.join('\n');
   }
 
+  // Per-DU stats export — one row per DU across ALL scenarios, with the full
+  // statistical detail behind each PASS/ACT call. This is the sheet to study
+  // each unit. Always includes both standards' calls + drivers.
+  function csvField(c, sep){
+    const s = String(c==null ? '' : c);
+    if(sep === ',' && /[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+    return s;
+  }
+  function perDuStatsToDelim(sep){
+    const headers = [
+      'Scenario','DU','Action','Depth (ft)','Depth mode','Area (ac)','Volume (yd3)',
+      'Bulk density (kg/m3)','Hg mass (kg)',
+      'n total','n R1','n R2','n EA',
+      'ROD call','ROD driver','Background call','Background driver',
+    ];
+    // per-analyte stat columns
+    ANALYTES.forEach(a => {
+      headers.push(`${a} mean`, `${a} max`, `${a} UCL-t`, `${a} UCL-C`,
+                   `${a} %>ROD`, `${a} %>PMB`, `${a} n detect`, `${a} n ND`, `${a} MDL`);
+    });
+    const lines = [headers.join(sep)];
+    const scenName = {}; STATE.du.scenarios.forEach(s => scenName[s.id] = s.name);
+    eachDU(l => {
+      const m = l.duMeta, stats = duStats(l);
+      const rod = duCallVsStandard(stats, 'ROD');
+      const pmb = duCallVsStandard(stats, 'PMB');
+      const db = stats.datasetBreakdown;
+      const row = [
+        scenName[m.scenarioId] || m.scenarioId, m.name,
+        (DU_ACTION_LOOKUP[m.action]||DU_ACTION_LOOKUP.Undecided).label,
+        m.depthFt, m.depthMode || 'manual',
+        stats.area_ac.toFixed(4), Math.round(stats.volume_yd3),
+        stats.bulkDensity, stats.HgMass_kg.toFixed(3),
+        stats.n, db['1'], db['2'], db.EA,
+        rod.call, rod.driver || '', pmb.call, pmb.driver || '',
+      ];
+      ANALYTES.forEach(a => {
+        const s = stats.byAnalyte[a];
+        if(s && s.hasResult && !s.allND){
+          row.push(
+            s.mean.toFixed(2), s.max.toFixed(2),
+            s.uclT!=null ? s.uclT.toFixed(2) : '',
+            s.uclC!=null ? s.uclC.toFixed(2) : '',
+            s.pctOverROD!=null ? s.pctOverROD.toFixed(0) : '',
+            s.pctOverPMB!=null ? s.pctOverPMB.toFixed(0) : '',
+            s.nDetect, s.nND, s.mdl!=null ? s.mdl : ''
+          );
+        } else if(s && s.hasResult && s.allND){
+          row.push('all ND','','','','','', s.nDetect, s.nND, s.mdl!=null ? s.mdl : '');
+        } else {
+          row.push('','','','','','','','','');
+        }
+      });
+      lines.push(row.map(c => csvField(c, sep)).join(sep));
+    });
+    if(lines.length === 1) lines.push(['(no DUs defined)'].join(sep));
+    return lines.join('\n');
+  }
+
   // ---- hot-spot DU generator ---------------------------------------------
   function generateHotspotDUs(){
     const thr   = parseFloat(document.getElementById('duHotspotThr').value);
@@ -3441,23 +3686,42 @@ function fitToData(){
     if(list){
       const items = [];
       eachActiveDU(l => {
-        const m = l.duMeta, stats = duStats(l), call = duCall(stats);
+        const m = l.duMeta, stats = duStats(l), calls = duCalls(stats);
         const a = DU_ACTION_LOOKUP[m.action] || DU_ACTION_LOOKUP.Undecided;
+        const badges = calls.map(c => {
+          const drv = (c.call === 'ACT' && c.driver) ? ` ${c.driver}` : '';
+          return `<span class="${c.cls}" style="font-size:8.5px" title="${c.label}">${c.tag}:${c.call}${drv}</span>`;
+        }).join(' ');
+        const depthTag = m.depthMode === 'auto' ? ' · auto' : '';
         items.push(`<div class="du-list-item" data-duid="${m.id}">
-          <span><span class="swatch" style="background:${a.color}"></span>${m.name}
-            <span style="color:var(--muted)">· n=${stats.n} · ${stats.area_ac.toFixed(2)} ac</span></span>
-          <span class="${call.cls}" style="font-size:9px">${call.call}</span>
+          <div class="du-li-main">
+            <div class="du-li-title"><span class="swatch" style="background:${a.color}"></span><b>${m.name}</b> ${badges}</div>
+            <div class="du-li-sub">${a.label} · n=${stats.n} · ${stats.area_ac.toFixed(2)} ac · ${m.depthFt} ft${depthTag}</div>
+          </div>
+          <div class="du-li-actions">
+            <button class="du-li-btn" data-act="edit"   data-duid="${m.id}" title="Edit DU">✎</button>
+            <button class="du-li-btn" data-act="zoom"   data-duid="${m.id}" title="Zoom to DU">⌖</button>
+            <button class="du-li-btn du-li-del" data-act="delete" data-duid="${m.id}" title="Delete DU">🗑</button>
+          </div>
         </div>`);
       });
       list.innerHTML = items.length
         ? items.join('')
-        : '<i>No DUs in "'+activeScenario().name+'" yet — draw a polygon, circle, or rectangle and click "Mark as DU" in its popup.</i>';
-      list.querySelectorAll('.du-list-item').forEach(el => {
-        el.addEventListener('click', () => {
-          const l = findDUById(el.dataset.duid); if(!l) return;
-          if(l.getBounds) map.fitBounds(l.getBounds(), { padding:[40,40], maxZoom:19 });
-          else if(l.getLatLng) map.setView(l.getLatLng(), Math.max(map.getZoom(), 18));
-          if(l.openPopup) l.openPopup();
+        : '<i>No DUs in "'+activeScenario().name+'" yet — click "+ New DU" above, or draw a shape and use "Mark as DU" in its popup.</i>';
+      const ct = document.getElementById('duCountTag');
+      if(ct) ct.textContent = items.length ? `(${items.length})` : '';
+      // Row body (not the action buttons) zooms + opens popup.
+      list.querySelectorAll('.du-list-item .du-li-main').forEach(el => {
+        el.addEventListener('click', () => duZoomTo(el.parentElement.dataset.duid));
+      });
+      // Inline action buttons.
+      list.querySelectorAll('.du-li-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const id = btn.dataset.duid, act = btn.dataset.act;
+          if(act === 'edit')   window.duEditPrompt(id);
+          else if(act === 'zoom') duZoomTo(id);
+          else if(act === 'delete') duDeleteById(id);
         });
       });
     }
@@ -3468,6 +3732,7 @@ function fitToData(){
     if(renBtn){ renBtn.disabled = !!sc.readonly; renBtn.style.opacity = sc.readonly?0.5:1; }
   }
   window.refreshDUUI = refreshDUUI;
+  window.renderCompareTable = renderCompareTable;
 
   // session-merge — called by loadSession after shapes have been restored
   window.mergeDUStateFromSession = function(savedDu){
@@ -3498,7 +3763,7 @@ function fitToData(){
     h.addEventListener('click', () => h.parentElement.classList.toggle('closed'));
   });
   const $du = id => document.getElementById(id);
-  $du('duAutoMark').addEventListener('change', e => { STATE.du.autoMark = e.target.checked; scheduleAutosave(); });
+  $du('duNewBtn').addEventListener('click', () => startNewDU());
   $du('duColorByAction').addEventListener('change', e => {
     STATE.du.colorByAction = e.target.checked;
     if(!e.target.checked){ eachDU(applyShapeStyle); } else { refreshAllDUStyles(); }
@@ -3564,6 +3829,18 @@ function fitToData(){
   });
   $du('duCompareCSV').addEventListener('click', () => {
     download(expFileName('ABP_scenarios') + '.csv', compareToDelim(','), 'text/csv');
+  });
+  $du('duStatsCopy').addEventListener('click', () => {
+    const tsv = perDuStatsToDelim('\t');
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(tsv).then(
+        () => alert('Per-DU statistics copied as TSV (paste into Excel or a doc).'),
+        () => prompt('Copy failed — copy manually:', tsv)
+      );
+    } else prompt('Copy manually:', tsv);
+  });
+  $du('duStatsCSV').addEventListener('click', () => {
+    download(expFileName('ABP_DU_stats') + '.csv', perDuStatsToDelim(','), 'text/csv');
   });
   $du('duHotspotRun').addEventListener('click', generateHotspotDUs);
 
