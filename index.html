@@ -145,6 +145,14 @@ body.tab-open #panel{transform:translateX(0)}
 body.dark .du-li-btn:hover{background:#27324a}
 .du-li-del:hover{background:#fde2e2;border-color:#f5b5b5;color:#b91c1c}
 body.dark .du-li-del:hover{background:#3d1d1d;border-color:#5c2a2a;color:#ff9a9a}
+.save-row{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:4px 6px;margin:2px 0;
+  border:1px solid var(--line);border-radius:5px;background:var(--card)}
+.save-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.save-acts{display:flex;gap:3px;flex:none}
+.draw-selected{border:1px solid var(--accent);border-radius:6px;padding:7px 9px;margin:4px 0 10px;background:rgba(43,140,190,.06)}
+body.dark .draw-selected{background:rgba(43,140,190,.12)}
+.draw-sel-head{display:flex;justify-content:space-between;align-items:center;font-size:12px}
+#drawEditBoundary{font-weight:600}
 .du-pass{display:inline-block;padding:1px 8px;border-radius:3px;font-weight:700;font-size:10px;background:#1a9641;color:#fff}
 .du-act{display:inline-block;padding:1px 8px;border-radius:3px;font-weight:700;font-size:10px;background:#d7191c;color:#fff}
 .du-tbd{display:inline-block;padding:1px 8px;border-radius:3px;font-weight:700;font-size:10px;background:#9e9e9e;color:#fff}
@@ -458,7 +466,8 @@ body:not(.tab-open) #coords{left:0}
     <div class="body">
       <label class="field">Color points by</label>
       <select id="colorBy">
-        <option value="rod">ROD exceedance</option>
+        <option value="rod">ROD exceedance (any analyte)</option>
+        <option value="exc">Over / under cleanup level (selected analyte)</option>
         <option value="hi">Hazard Index (combined)</option>
         <option value="doc">Depth of contamination</option>
         <option value="conc">Analyte concentration</option>
@@ -474,6 +483,14 @@ body:not(.tab-open) #coords{left:0}
           <option value="As">Arsenic (As)</option>
           <option value="Sb">Antimony (Sb)</option>
           <option value="Tl">Thallium (Tl)</option>
+        </select>
+      </div>
+
+      <div id="excWrap" style="display:none">
+        <label class="field">Compare against</label>
+        <select id="excStandard">
+          <option value="ROD">ROD cleanup level</option>
+          <option value="PMB">Background (PMB)</option>
         </select>
       </div>
 
@@ -615,7 +632,23 @@ body:not(.tab-open) #coords{left:0}
   <div class="section closed" data-sec="draw">
     <h2>Draw &amp; Measure <span class="chev">▾</span></h2>
     <div class="body">
-      <p class="hint">Use the toolbar on the map (top-right) to draw lines, polygons, rectangles, circles, and text. Lines show length; polygons show area + in-polygon stats. Vertices snap to samples.</p>
+      <p class="hint">Use the toolbar on the map (top-right) to draw lines, polygons, rectangles, circles, and text. Click any shape to select it and edit it here. Vertices snap to samples.</p>
+
+      <div id="drawSelected" class="draw-selected">
+        <div class="draw-sel-head">
+          <span id="drawSelTitle">No shape selected</span>
+          <button id="drawSelClear" class="du-li-btn" title="Deselect" style="display:none">✕</button>
+        </div>
+        <div id="drawSelBody" class="hint" style="margin-top:4px">Click a drawn shape on the map to select it.</div>
+        <div id="drawSelActions" class="row" style="gap:4px;flex-wrap:wrap;margin-top:6px;display:none">
+          <button class="btn" id="drawEditBoundary" style="flex:1;min-width:90px">✎ Edit boundary</button>
+          <button class="btn" id="drawApplyStyle" style="flex:1;min-width:80px">Apply style</button>
+          <button class="btn" id="drawSelDuEdit" style="flex:1;min-width:70px;display:none">Edit DU</button>
+          <button class="btn" id="drawSelMark" style="flex:1;min-width:80px;display:none">Mark as DU</button>
+          <button class="btn du-li-del" id="drawSelDelete" style="flex:1;min-width:70px">🗑 Delete</button>
+        </div>
+      </div>
+
       <label class="field">Shape style</label>
       <div class="row">
         <span>Line<input type="color" id="styleStroke" value="#1f6feb" style="width:100%"></span>
@@ -819,12 +852,32 @@ body:not(.tab-open) #coords{left:0}
       <label class="field" style="margin-top:8px">Import GeoJSON (data or shapes)</label>
       <input type="file" id="importFile" accept=".geojson,.json">
       <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
-      <div class="row">
-        <button class="btn" id="saveSession">Save session</button>
-        <button class="btn" id="loadSession">Load session</button>
+
+      <h2 style="font-size:12px;margin:0 0 6px;color:var(--ink)">Save &amp; restore your work</h2>
+
+      <label class="field" style="margin-top:0">Project file <span class="hint" style="font-weight:400">— durable, portable, your system of record</span></label>
+      <div class="row" style="gap:4px">
+        <input type="text" id="projName" value="ABP_project" placeholder="project name" style="flex:2">
       </div>
-      <label class="checkrow"><input type="checkbox" id="autoSave" checked> Auto-save to browser</label>
-      <div id="sessionMsg" class="hint"></div>
+      <div class="row" style="gap:4px;margin-top:4px">
+        <button class="btn primary" id="saveProject" style="flex:1">💾 Save Project</button>
+        <button class="btn" id="openProjectBtn" style="flex:1">📂 Open Project</button>
+      </div>
+      <input type="file" id="openProjectInput" accept=".json,.abp.json" style="display:none">
+      <p class="hint">Downloads a single file with everything — all settings, shapes, DUs, and scenarios. Works on any computer; email it or drop it on a shared drive. Each person keeps their own file.</p>
+
+      <label class="field">Browser saves <span class="hint" style="font-weight:400">— this computer only</span></label>
+      <div class="row" style="gap:4px">
+        <input type="text" id="saveSlotName" placeholder="name this save…" style="flex:2">
+        <button class="btn" id="saveSlotBtn" style="flex:none">Save</button>
+      </div>
+      <div id="savesList" style="margin-top:6px;font-size:11px"></div>
+      <label class="checkrow" style="margin-top:6px"><input type="checkbox" id="autoSave" checked> Auto-save to browser (rolling)</label>
+      <div class="row" style="gap:6px;align-items:center">
+        <span id="saveStatus" class="hint" style="flex:1"></span>
+        <button class="btn" id="restoreAutosave" style="flex:none;font-size:10px;padding:3px 8px">Restore latest</button>
+      </div>
+      <div id="sessionMsg" class="hint" style="margin-top:4px"></div>
     </div>
   </div>
 
@@ -884,6 +937,7 @@ function datasetLabel(p){ return DATASET_LABEL[p.dataset] || ('Round '+p.round);
 // UI state
 const STATE = {
   colorBy:'rod', analyte:'Hg', criterion:'ROD',
+  excStandard:'ROD',                        // 'ROD' | 'PMB' — threshold for the over/under color mode
   showLabels:false, logScale:true,
   showPoints:true,
   ndRule:'zero',                            // 'zero' | 'halfdl' | 'dl' — non-detect substitution rule
@@ -1118,6 +1172,13 @@ function fillFor(p, mode){
   if(!p.sampled) return null;                  // hollow handled by renderer
   switch(mode || STATE.colorBy){
     case 'rod': return p.rod_exceed==='YES'?SEM.yes : p.rod_exceed==='NO'?SEM.no : SEM.ns;
+    case 'exc': {                              // over/under cleanup level for the selected analyte
+      if(!p.sampled) return SEM.ns;
+      const v = num(p[STATE.analyte]);
+      const thr = (CRITERIA[STATE.excStandard==='PMB'?'PMB':'ROD']||{})[STATE.analyte];
+      if(!isNum(v) || !isNum(thr)) return '#cccccc';   // no data / no threshold
+      return v > thr ? SEM.yes : SEM.no;               // red over, green at/under
+    }
     case 'round': return DATASET_COLOR[p.dataset] || (p.round===1 ? '#2b8cbe' : '#e6550d');
     case 'driver': return driverColor(p);
     case 'conc': {
@@ -1479,6 +1540,14 @@ function buildLegend(){
       <div class="legend-row">${swatch(SEM.yes)} Exceeds ROD</div>
       <div class="legend-row">${swatch(SEM.no)} Below ROD</div>
       <div class="legend-row">${swatch(SEM.ns)} Not sampled</div>`;
+  } else if(STATE.colorBy==='exc'){
+    const std = STATE.excStandard==='PMB' ? 'Background (PMB)' : 'ROD cleanup';
+    const thr = (CRITERIA[STATE.excStandard==='PMB'?'PMB':'ROD']||{})[an];
+    html = `<div style="font-weight:600;margin-bottom:4px">${ANALYTE_LABEL[an]} vs ${std}${isNum(thr)?` (${thr} ${UNITS})`:''}</div>
+      <div class="legend-row">${swatch(SEM.yes)} Over — exceeds ${std}</div>
+      <div class="legend-row">${swatch(SEM.no)} At / under ${std}</div>
+      <div class="legend-row">${swatch('#cccccc')} No data</div>
+      <div class="legend-row">${swatch(SEM.ns)} Not sampled</div>`;
   } else if(STATE.colorBy==='hi'){
     html = `<div style="font-weight:600;margin-bottom:4px">Hazard Index (HI) — combined ROD ratio</div>
       <div class="legend-row">${swatch(HI_COLOR.safe)} ${HI_LABEL.safe}</div>
@@ -1538,8 +1607,10 @@ function buildLegend(){
    SECTION 6 — UI WIRING (Phase 1)
    ========================================================================= */
 function syncControlVisibility(){
-  const needAnalyte = ['conc','ratio','doc'].includes(STATE.colorBy);
+  const needAnalyte = ['conc','ratio','doc','exc'].includes(STATE.colorBy);
   document.getElementById('analyteWrap').style.display = needAnalyte ? '' : 'none';
+  const excW = document.getElementById('excWrap');
+  if(excW) excW.style.display = (STATE.colorBy==='exc') ? '' : 'none';
 }
 function applyDisplay(){
   syncControlVisibility();
@@ -1547,8 +1618,9 @@ function applyDisplay(){
   buildLegend();
 }
 
-document.getElementById('colorBy').addEventListener('change', e=>{ STATE.colorBy=e.target.value; applyDisplay(); });
-document.getElementById('analyte').addEventListener('change', e=>{ STATE.analyte=e.target.value; applyDisplay(); });
+document.getElementById('colorBy').addEventListener('change', e=>{ STATE.colorBy=e.target.value; applyDisplay(); scheduleAutosave(); });
+document.getElementById('analyte').addEventListener('change', e=>{ STATE.analyte=e.target.value; applyDisplay(); scheduleAutosave(); });
+document.getElementById('excStandard').addEventListener('change', e=>{ STATE.excStandard=e.target.value; applyDisplay(); scheduleAutosave(); });
 document.getElementById('showLabels').addEventListener('change', e=>{ STATE.showLabels=e.target.checked; refreshMarkers(); });
 document.getElementById('logScale').addEventListener('change', e=>{ STATE.logScale=e.target.checked; applyDisplay(); });
 document.getElementById('ndRule').addEventListener('change', e=>{
@@ -1945,11 +2017,99 @@ map.on('pm:create', e=>{
 // DU list + comparison table so the panel reflects the deletion.
 map.on('pm:remove', e=>{
   const wasDU = e && e.layer && e.layer.duMeta;
+  if(e && e.layer === _selectedShape) clearShapeSelection();
   if(wasDU && typeof refreshDUUI === 'function'){
     refreshDUUI();
     const out = document.getElementById('duCompareOut'); if(out && out.innerHTML && typeof window.renderCompareTable==='function') window.renderCompareTable();
   }
   scheduleAutosave();
+});
+
+/* ---- Draw tab: select a drawn shape and edit it from the panel -----------
+   Clicking any shape in drawnItems selects it; the Draw tab's "Selected shape"
+   block then shows its info + boundary-edit / style / DU controls. */
+let _selectedShape = null, _editingBoundary = null;
+drawnItems.on('click', e => {
+  const layer = e.layer || e.propagatedFrom;
+  if(layer) selectDrawnShape(layer);
+});
+function selectDrawnShape(layer){
+  if(_editingBoundary && _editingBoundary !== layer) stopBoundaryEdit();
+  _selectedShape = layer;
+  renderDrawSelection();
+  // switch to the Draw tab so the controls are visible
+  if(STATE.activeTab !== 'draw' && typeof activateTab === 'function') activateTab('draw');
+}
+function clearShapeSelection(){
+  stopBoundaryEdit();
+  _selectedShape = null;
+  renderDrawSelection();
+}
+function stopBoundaryEdit(){
+  if(_editingBoundary){ try{ _editingBoundary.pm.disable(); }catch(e){} _editingBoundary = null; }
+  const b = document.getElementById('drawEditBoundary'); if(b) b.textContent = '✎ Edit boundary';
+}
+function renderDrawSelection(){
+  const title = document.getElementById('drawSelTitle');
+  const body  = document.getElementById('drawSelBody');
+  const acts  = document.getElementById('drawSelActions');
+  const clr   = document.getElementById('drawSelClear');
+  if(!title) return;
+  const l = _selectedShape;
+  if(!l){
+    title.textContent = 'No shape selected';
+    body.innerHTML = 'Click a drawn shape on the map to select it.';
+    acts.style.display = 'none'; clr.style.display = 'none';
+    return;
+  }
+  const isDU = !!l.duMeta;
+  const info = shapeStats(l);
+  title.innerHTML = isDU ? `<b>DU: ${l.duMeta.name}</b>` : `<b>${info.kind||'Shape'}</b>`;
+  body.innerHTML = isDU ? duReportHtmlSafe(l) : info.html;
+  acts.style.display = ''; clr.style.display = '';
+  document.getElementById('drawSelDuEdit').style.display = isDU ? '' : 'none';
+  document.getElementById('drawSelMark').style.display   = (!isDU && (l instanceof L.Polygon || l instanceof L.Circle)) ? '' : 'none';
+  // boundary edit only applies to polygons/rectangles/lines/circles (not text markers)
+  const editable = (l instanceof L.Polygon || l instanceof L.Polyline || l instanceof L.Circle);
+  document.getElementById('drawEditBoundary').style.display = editable ? '' : 'none';
+}
+function duReportHtmlSafe(l){
+  try { return (typeof window.duFullPopupHtml==='function') ? window.duFullPopupHtml(l, shapeStats(l)) : shapeStats(l).html; }
+  catch(e){ return shapeStats(l).html; }
+}
+// expose so the DU module can refresh the Draw panel after edits to the selected shape
+window.renderDrawSelection = renderDrawSelection;
+window.getSelectedShape = () => _selectedShape;
+// wire the selected-shape action buttons (once)
+document.getElementById('drawSelClear').addEventListener('click', clearShapeSelection);
+document.getElementById('drawEditBoundary').addEventListener('click', () => {
+  const l = _selectedShape; if(!l) return;
+  if(_editingBoundary === l){ stopBoundaryEdit(); }
+  else {
+    stopBoundaryEdit();
+    try{ l.pm.enable({ allowSelfIntersection:false, snappable:true, snapDistance:18 }); _editingBoundary = l;
+      document.getElementById('drawEditBoundary').textContent = '✓ Done editing'; }
+    catch(e){ alert('This shape cannot be vertex-edited.'); }
+  }
+});
+document.getElementById('drawApplyStyle').addEventListener('click', () => {
+  const l = _selectedShape; if(!l || !l.setStyle) return;
+  applyShapeStyle(l);
+  if(l.duMeta && typeof applyDUStyle==='function') applyDUStyle(l);   // keep DU action-color if applicable
+  scheduleAutosave();
+});
+document.getElementById('drawSelDuEdit').addEventListener('click', () => {
+  if(_selectedShape && _selectedShape.duMeta) window.duEditPrompt(_selectedShape.duMeta.id);
+});
+document.getElementById('drawSelMark').addEventListener('click', () => {
+  const l = _selectedShape; if(!l || l.duMeta) return;
+  if(typeof window.duMarkLayer === 'function' && window.duMarkLayer(l)) renderDrawSelection();
+});
+document.getElementById('drawSelDelete').addEventListener('click', () => {
+  const l = _selectedShape; if(!l) return;
+  if(l.duMeta && typeof window.duDeleteById === 'function'){ window.duDeleteById(l.duMeta.id); clearShapeSelection(); return; }
+  if(!confirm('Delete this shape?')) return;
+  drawnItems.removeLayer(l); clearShapeSelection(); scheduleAutosave();
 });
 
 function shapesToGeoJSON(){
@@ -2239,15 +2399,22 @@ function handleImport(file){
 /* =========================================================================
    SECTION 14 — SESSION PERSISTENCE (localStorage)
    ========================================================================= */
-const LS_KEY = 'abp_session_v1';
+const LS_KEY    = 'abp_session_v1';     // rolling auto-save slot
+const SAVES_KEY = 'abp_saves_v1';       // registry of named browser saves
+const APP_TAG   = 'ABP-Visualizer';
 let autosaveTimer=null;
+let _dirty=false;                       // unsaved-changes flag for the beforeunload guard
+let _lastSavedAt=null;
+
 function scheduleAutosave(){
+  _dirty = true; updateSaveStatus();
   if(!$('autoSave') || !$('autoSave').checked) return;
-  clearTimeout(autosaveTimer); autosaveTimer=setTimeout(saveSession, 700);
+  clearTimeout(autosaveTimer); autosaveTimer=setTimeout(()=>saveSession(true), 700);
 }
 function sessionData(){
   return {
     colorBy:STATE.colorBy, analyte:STATE.analyte,
+    excStandard:STATE.excStandard,
     ndRule:STATE.ndRule,
     activeTab:STATE.activeTab,
     showLabels:STATE.showLabels, logScale:STATE.logScale, showPoints:STATE.showPoints,
@@ -2262,18 +2429,108 @@ function sessionData(){
     du: (typeof STATE!=='undefined' && STATE.du) ? STATE.du : null  // SECTION — DECISION UNITS & SCENARIOS
   };
 }
-function saveSession(){
-  try{ localStorage.setItem(LS_KEY, JSON.stringify(sessionData()));
-    $('sessionMsg').textContent='Saved '+new Date().toLocaleTimeString(); }
-  catch(e){ $('sessionMsg').textContent='Save failed: '+e.message; }
+// Rolling auto-save to the browser. silent=true suppresses the status-line text.
+function saveSession(silent){
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify(sessionData()));
+    _dirty=false; _lastSavedAt=new Date(); updateSaveStatus();
+    if(!silent) $('sessionMsg').textContent='Saved to browser '+_lastSavedAt.toLocaleTimeString();
+  }catch(e){ $('sessionMsg').textContent='Browser save failed: '+e.message+' — use Save Project for a durable file.'; }
 }
-function loadSession(silent){
-  let raw; try{ raw=localStorage.getItem(LS_KEY); }catch(e){ return; }
-  if(!raw){ if(!silent) $('sessionMsg').textContent='No saved session found.'; return; }
-  let d; try{ d=JSON.parse(raw); }catch(e){ return; }
+function updateSaveStatus(){
+  const el = document.getElementById('saveStatus');
+  if(!el) return;
+  if(_dirty){ el.textContent='● unsaved changes'; el.style.color='#b35900'; }
+  else if(_lastSavedAt){ el.textContent='✓ saved to browser '+_lastSavedAt.toLocaleTimeString(); el.style.color='var(--muted)'; }
+  else { el.textContent=''; }
+}
+
+// ---- Named browser saves (registry in localStorage) -----------------------
+function readSaves(){
+  try{ return JSON.parse(localStorage.getItem(SAVES_KEY)) || {}; }catch(e){ return {}; }
+}
+function writeSaves(obj){
+  try{ localStorage.setItem(SAVES_KEY, JSON.stringify(obj)); return true; }
+  catch(e){ alert('Could not save to browser: '+e.message+'\n\nUse "Save Project" to download a durable file instead.'); return false; }
+}
+function saveNamedSlot(){
+  const inp = document.getElementById('saveSlotName');
+  const name = (inp.value||'').trim();
+  if(!name){ inp.focus(); $('sessionMsg').textContent='Type a name for this browser save.'; return; }
+  const saves = readSaves();
+  saves[name] = { savedAt:new Date().toISOString(), data:sessionData() };
+  if(writeSaves(saves)){ inp.value=''; renderSavesList(); $('sessionMsg').textContent='Saved "'+name+'" to this browser.'; }
+}
+function loadNamedSlot(name){
+  const saves = readSaves();
+  if(!saves[name]){ $('sessionMsg').textContent='Save "'+name+'" not found.'; return; }
+  if(_dirty && !confirm('Load "'+name+'"? Unsaved changes in the current view will be replaced.')) return;
+  applySession(saves[name].data, true);
+  $('sessionMsg').textContent='Loaded "'+name+'" from browser.';
+}
+function deleteNamedSlot(name){
+  if(!confirm('Delete browser save "'+name+'"? (This does not affect any downloaded project files.)')) return;
+  const saves = readSaves(); delete saves[name]; writeSaves(saves); renderSavesList();
+}
+function renderSavesList(){
+  const box = document.getElementById('savesList'); if(!box) return;
+  const saves = readSaves();
+  const names = Object.keys(saves).sort((a,b)=> (saves[b].savedAt||'').localeCompare(saves[a].savedAt||''));
+  if(!names.length){ box.innerHTML='<i style="color:var(--muted)">No browser saves yet.</i>'; return; }
+  box.innerHTML = names.map(n=>{
+    const t = saves[n].savedAt ? new Date(saves[n].savedAt).toLocaleString() : '';
+    return `<div class="save-row">
+      <span class="save-name" title="${t}">${n} <span style="color:var(--muted);font-weight:400">· ${t}</span></span>
+      <span class="save-acts">
+        <button class="du-li-btn" data-save-load="${encodeURIComponent(n)}" title="Load">Load</button>
+        <button class="du-li-btn du-li-del" data-save-del="${encodeURIComponent(n)}" title="Delete">🗑</button>
+      </span>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('[data-save-load]').forEach(b=>b.addEventListener('click',()=>loadNamedSlot(decodeURIComponent(b.dataset.saveLoad))));
+  box.querySelectorAll('[data-save-del]').forEach(b=>b.addEventListener('click',()=>deleteNamedSlot(decodeURIComponent(b.dataset.saveDel))));
+}
+
+// ---- Project files (download / open) — the durable, portable, multi-user path
+function saveProjectFile(){
+  const name = ((document.getElementById('projName')||{}).value||'ABP_project').trim().replace(/[^\w.-]+/g,'_') || 'ABP_project';
+  const stamp = new Date();
+  const payload = {
+    app: APP_TAG, version: 1,
+    savedAt: stamp.toISOString(),
+    name,
+    state: sessionData(),
+  };
+  const ds = stamp.toISOString().slice(0,10);
+  download(`${name}_${ds}.abp.json`, JSON.stringify(payload, null, 2), 'application/json');
+  _dirty=false; _lastSavedAt=stamp; updateSaveStatus();
+  $('sessionMsg').textContent='Project file downloaded. Keep it as your durable copy (works on any computer).';
+}
+function openProjectFile(file){
+  const rd = new FileReader();
+  rd.onload = () => {
+    let parsed; try{ parsed = JSON.parse(rd.result); }catch(e){ $('sessionMsg').textContent='Not a valid project file: '+e.message; return; }
+    // accept either a wrapped project file ({app,state}) or a bare sessionData object
+    const data = (parsed && parsed.state) ? parsed.state : parsed;
+    if(!data || typeof data!=='object'){ $('sessionMsg').textContent='Project file has no usable state.'; return; }
+    if(_dirty && !confirm('Open this project? Unsaved changes in the current view will be replaced.')) return;
+    if(applySession(data, true)){
+      $('sessionMsg').textContent='Project loaded'+(parsed.name?': '+parsed.name:'')+'.';
+    } else {
+      $('sessionMsg').textContent='Could not apply project state.';
+    }
+  };
+  rd.readAsText(file);
+}
+// Apply a previously-saved state object to the live app. Shared by the local
+// auto-save/restore path AND by "Open Project" (file import) — single code path
+// so a project file and a browser save restore identically.
+function applySession(d, silent){
+  if(!d || typeof d !== 'object') return false;
   const set=(id,v)=>{ const el=$(id); if(el!=null && v!=null){ if(el.type==='checkbox') el.checked=v; else el.value=v; } };
   STATE.colorBy=d.colorBy||STATE.colorBy; set('colorBy',STATE.colorBy);
   STATE.analyte=d.analyte||STATE.analyte; set('analyte',STATE.analyte);
+  if(['ROD','PMB'].includes(d.excStandard)){ STATE.excStandard=d.excStandard; set('excStandard',STATE.excStandard); }
   if(['zero','halfdl','dl'].includes(d.ndRule)){ STATE.ndRule=d.ndRule; set('ndRule',STATE.ndRule); }
   STATE.showLabels=!!d.showLabels; set('showLabels',STATE.showLabels);
   STATE.logScale=d.logScale!==false; set('logScale',STATE.logScale);
@@ -2303,10 +2560,20 @@ function loadSession(silent){
   if(d.du && typeof mergeDUStateFromSession==='function') mergeDUStateFromSession(d.du);   // SECTION — DECISION UNITS & SCENARIOS
   if(typeof refreshDUUI==='function') refreshDUUI();
   syncControlVisibility(); applyDisplay(); applyFilters(); updateGrid();
+  if(typeof buildLegend==='function') buildLegend();
   // restore the last-active tab (null = clean map with no panel open)
   if(d.activeTab && document.querySelector('.tab-btn[data-tab="'+d.activeTab+'"]')){
     activateTab(d.activeTab);
   }
+  _dirty = false; updateSaveStatus();
+  return true;
+}
+// Restore the rolling auto-save slot from localStorage (called on page load).
+function loadSession(silent){
+  let raw; try{ raw=localStorage.getItem(LS_KEY); }catch(e){ return; }
+  if(!raw){ if(!silent) $('sessionMsg').textContent='No saved session found.'; return; }
+  let d; try{ d=JSON.parse(raw); }catch(e){ return; }
+  applySession(d, silent);
   if(!silent) $('sessionMsg').textContent='Session loaded.';
 }
 
@@ -2408,9 +2675,19 @@ $('themeToggle').addEventListener('click', ()=>{
   scheduleAutosave();
   setTimeout(()=>document.body.classList.remove('theme-anim'), 420);
 });
-// session
-$('saveSession').addEventListener('click', saveSession);
-$('loadSession').addEventListener('click', ()=>loadSession(false));
+// ---- Save & restore wiring ----
+$('saveProject').addEventListener('click', saveProjectFile);
+$('openProjectBtn').addEventListener('click', ()=>$('openProjectInput').click());
+$('openProjectInput').addEventListener('change', e=>{ if(e.target.files[0]){ openProjectFile(e.target.files[0]); e.target.value=''; } });
+$('saveSlotBtn').addEventListener('click', saveNamedSlot);
+$('saveSlotName').addEventListener('keydown', e=>{ if(e.key==='Enter') saveNamedSlot(); });
+$('restoreAutosave').addEventListener('click', ()=>loadSession(false));
+$('autoSave').addEventListener('change', ()=>{ if($('autoSave').checked) saveSession(true); });
+renderSavesList(); updateSaveStatus();
+// Warn before leaving with unsaved changes (only when shapes/DUs exist to lose).
+window.addEventListener('beforeunload', e=>{
+  if(_dirty){ e.preventDefault(); e.returnValue=''; return ''; }
+});
 // OM charts are built when the Stats tab is first activated (see activateTab).
 
 // extend applyDisplay (Phase 1 version) to refresh stats + density layers
@@ -3322,6 +3599,7 @@ function fitToData(){
     meta.scenarioId = scenId;
     meta.notes = notes;
     applyDUStyle(l); attachShapeInfo(l); refreshDUUI(); scheduleAutosave();
+    if(window.getSelectedShape && window.getSelectedShape()===l && window.renderDrawSelection) window.renderDrawSelection();
     _closeDuModal();
   }
   // Wire modal once
@@ -3403,6 +3681,9 @@ function fitToData(){
     scheduleAutosave();
   }
   window.duDeleteById = duDeleteById;
+  // Promote an arbitrary already-drawn layer to a DU (used by the Draw-tab
+  // "Mark as DU" button). Returns true on success.
+  window.duMarkLayer = function(layer){ return promoteToDU(layer); };
 
   // "+ New DU" — enter polygon draw mode; the next shape auto-promotes to a DU
   // in the active scenario and immediately opens its edit modal.
