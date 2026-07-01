@@ -505,6 +505,55 @@ body:not(.tab-open) #coords{left:0}
   </div>
 </div>
 
+<!-- Preset scenario builder modal -->
+<div id="duPresetModal" class="du-modal-overlay" hidden>
+  <div class="du-modal" style="width:440px;max-width:94vw" role="dialog" aria-modal="true" aria-labelledby="duPresetTitle">
+    <div class="du-modal-head">
+      <h3 id="duPresetTitle">Build preset scenario</h3>
+      <button id="duPresetClose" class="du-modal-x" aria-label="close">✕</button>
+    </div>
+    <div class="du-modal-body">
+      <p class="hint" id="duPresetDesc" style="margin-top:0"></p>
+      <label class="field">Scenario name</label>
+      <input type="text" id="duPreset_name" maxlength="60" autocomplete="off">
+      <div id="duPresetDigFields">
+        <div class="du-modal-row">
+          <div style="flex:1">
+            <label class="field">Dig threshold (Hg mg/kg)</label>
+            <input type="number" id="duPreset_thr" min="1" step="1">
+          </div>
+          <div style="flex:1">
+            <label class="field">Dig radius (ft)</label>
+            <input type="number" id="duPreset_radius" min="10" max="500" step="5" value="65">
+          </div>
+        </div>
+        <p class="hint" style="margin-top:2px">Radius = how far a dig polygon may extend around each exceeding sample. Bigger radius → broader, more connected dig areas.</p>
+        <div class="du-modal-row">
+          <div style="flex:1">
+            <label class="field">Min dig-polygon area (m²)</label>
+            <input type="number" id="duPreset_minArea" min="1" step="5" value="50">
+          </div>
+          <div style="flex:1">
+            <label class="field">Dig depth</label>
+            <select id="duPreset_depthMode">
+              <option value="auto">Auto — deepest exceedance</option>
+              <option value="fixed">Fixed depth…</option>
+            </select>
+            <input type="number" id="duPreset_depthFt" min="0.25" step="0.25" value="1" placeholder="ft" style="display:none;margin-top:4px">
+          </div>
+        </div>
+        <label class="checkrow"><input type="checkbox" id="duPreset_remainder" checked> Add a "Remainder — leave" DU covering the rest of the site</label>
+      </div>
+      <p class="hint" style="margin-bottom:0">Creates a new scenario and switches to it. Fully undoable with ↺ Oops.</p>
+    </div>
+    <div class="du-modal-foot">
+      <span id="duPresetMsg" class="du-modal-msg"></span>
+      <button class="btn" id="duPresetCancel">Cancel</button>
+      <button class="btn primary" id="duPresetBuild">Build scenario</button>
+    </div>
+  </div>
+</div>
+
 <!-- Glossary / help modal -->
 <div id="helpModal" class="du-modal-overlay" hidden>
   <div class="du-modal" style="width:640px;max-width:94vw">
@@ -922,7 +971,7 @@ body:not(.tab-open) #coords{left:0}
             <button class="btn" id="duCompareRender" style="flex:1;min-width:80px">Refresh table</button>
             <button class="btn" id="duCompareCopy" style="flex:1;min-width:80px">Copy TSV</button>
             <button class="btn" id="duCompareCSV" style="flex:1;min-width:80px">Download CSV</button>
-            <button class="btn primary" id="duReportBtn" style="flex:1;min-width:110px" title="Print-ready report: scenario comparison, per-DU detail with basis notes, EU pooling, costs, methodology">🖨 Printable report</button>
+            <button class="btn primary" id="duReportBtn" style="flex:1;min-width:110px" title="Print-ready report: site + per-scenario maps, comparison table, per-DU detail with basis notes, EU pooling, costs, methodology">🖨 Printable report</button>
           </div>
           <div id="duCompareOut" style="margin-top:8px;overflow-x:auto"></div>
           <label class="field">Per-DU statistics (one row per DU)</label>
@@ -2405,6 +2454,12 @@ let _selectedShape = null, _editingBoundary = null;
 drawnItems.on('click', e => {
   const layer = e.layer || e.propagatedFrom;
   if(layer) selectDrawnShape(layer);
+});
+// If the selected shape leaves the map by ANY path — clear-all, DU-panel delete,
+// undo/redo rebuild, session load, erase tool — reset the Draw tab's selection
+// block instead of showing a stale card for a layer that no longer exists.
+drawnItems.on('layerremove', e => {
+  if(e.layer === _selectedShape) clearShapeSelection();
 });
 // On hover, bring the shape to front so its subtle glow isn't hidden under overlaps.
 drawnItems.on('mouseover', e => {
@@ -5084,8 +5139,9 @@ function fitToData(){
     try { bands = turf.isobands(grid, [thr, 1e12], { zProperty:'v' }); }
     catch(e){ toast('Contouring failed: ' + e.message, 4200); return { created:0, skipped:0, layers:[] }; }
     let mask = null;
+    const maskRadiusM = (opts.maskRadiusM > 0) ? opts.maskRadiusM : 20;
     exceed.forEach(f => {
-      const b = turf.buffer(turf.point(f.geometry.coordinates), 20, { units:'meters' });
+      const b = turf.buffer(turf.point(f.geometry.coordinates), maskRadiusM, { units:'meters' });
       try { mask = mask ? turf.union(mask, b) : b; } catch(e){ if(!mask) mask = b; }
     });
     let created = 0, skipped = 0;
@@ -5101,10 +5157,11 @@ function fitToData(){
           if(wouldOverlapActiveDU(piece, null)){ skipped++; return; }
           const layer = L.geoJSON(piece).getLayers()[0];
           drawnItems.addLayer(layer);
-          const ok = promoteToDU(layer, {
-            name: `${namePrefix}-${++created}`,
-            action,   // depth left to auto-derive from deepest in-polygon exceedance
-          });
+          const duOpts = { name: `${namePrefix}-${++created}`, action };
+          // fixed depth override; otherwise depth auto-derives from the deepest
+          // in-polygon exceedance (promoteToDU's default)
+          if(opts.depthFt != null) duOpts.depthFt = opts.depthFt;
+          const ok = promoteToDU(layer, duOpts);
           if(!ok){ created--; drawnItems.removeLayer(layer); }
           else { wireShapeEvents(layer); layers.push(layer); }
         });
@@ -5147,38 +5204,73 @@ function fitToData(){
     wireShapeEvents(layer);
     return true;
   }
-  async function buildPresetScenario(kind){
+  // The preset buttons open a small form so every knob is adjustable before the
+  // build: threshold (dig ≥ 500, 300, …), dig radius, min polygon size, fixed or
+  // auto depth, and whether to add the remainder DU.
+  let _presetKind = null;
+  function presetDefs(){
     const rodHg = (CRITERIA.ROD || {}).Hg;
     const pmbHg = (CRITERIA.PMB || {}).Hg;
-    const defs = {
+    return {
       noaction: { name:'No action', thr:null,
-        desc:'One site-wide DU set to <b>Leave / revegetate</b> — the do-nothing baseline row for the compare table.' },
+        desc:'One site-wide DU set to Leave / revegetate — the do-nothing baseline row for the compare table.' },
       dig1000:  { name:'Excavate ≥ 1000', thr:1000,
-        desc:'Hot-spot DUs (<b>Hand-excavate</b>) wherever interpolated Hg ≥ <b>1000 mg/kg</b>, plus a <b>Leave</b> DU covering the remainder.' },
+        desc:'Hand-excavate DUs wherever interpolated Hg exceeds the threshold below. Adjust any knob before building.' },
       digROD:   { name:`Excavate ≥ ROD (${rodHg})`, thr:rodHg,
-        desc:`Hot-spot DUs (<b>Hand-excavate</b>) wherever interpolated Hg ≥ <b>ROD ${rodHg} mg/kg</b>, plus a <b>Leave</b> DU covering the remainder.` },
+        desc:'Hand-excavate DUs wherever interpolated Hg exceeds the threshold below (prefilled with the ROD level). Adjust any knob before building.' },
       digBG:    { name:`Excavate ≥ background (${pmbHg})`, thr:pmbHg,
-        desc:`Hot-spot DUs (<b>Hand-excavate</b>) wherever interpolated Hg ≥ <b>background ${pmbHg} mg/kg</b>, plus a <b>Leave</b> DU covering the remainder.` },
+        desc:'Hand-excavate DUs wherever interpolated Hg exceeds the threshold below (prefilled with background). Adjust any knob before building.' },
     };
-    const def = defs[kind]; if(!def) return;
+  }
+  function openPresetModal(kind){
+    const def = presetDefs()[kind]; if(!def) return;
     if(def.thr !== null && !isNum(def.thr)){ toast('That criterion is missing from the dataset metadata.'); return; }
-    const ok = await appConfirm(
-      `Build preset scenario "<b>${def.name}</b>"?<br><span class="hint">${def.desc} Creates a new scenario and switches to it. Undo with ↺ Oops.</span>`,
-      { title:'Preset scenario', okText:'Build' });
-    if(!ok) return;
+    _presetKind = kind;
+    $du('duPresetTitle').textContent = 'Preset — ' + def.name;
+    $du('duPresetDesc').textContent = def.desc;
+    $du('duPreset_name').value = def.name;
+    $du('duPresetDigFields').style.display = def.thr === null ? 'none' : '';
+    if(def.thr !== null) $du('duPreset_thr').value = def.thr;
+    $du('duPresetMsg').textContent = '';
+    $du('duPresetModal').hidden = false;
+    setTimeout(() => (def.thr === null ? $du('duPreset_name') : $du('duPreset_thr')).focus(), 30);
+  }
+  function closePresetModal(){ $du('duPresetModal').hidden = true; _presetKind = null; }
+  function buildPresetFromModal(){
+    const def = presetDefs()[_presetKind]; if(!def) return closePresetModal();
+    const isDig = def.thr !== null;
+    const nameRaw = $du('duPreset_name').value.trim();
+    if(!nameRaw){ $du('duPresetMsg').textContent = 'Name is required.'; return; }
+    let thr = null, maskRadiusM = 20, minM2 = 50, depthFt = null, wantRemainder = true;
+    if(isDig){
+      thr = parseFloat($du('duPreset_thr').value);
+      if(!(thr > 0)){ $du('duPresetMsg').textContent = 'Threshold must be > 0.'; return; }
+      const radFt = parseFloat($du('duPreset_radius').value);
+      if(!(radFt >= 10)){ $du('duPresetMsg').textContent = 'Radius must be ≥ 10 ft.'; return; }
+      maskRadiusM = radFt * 0.3048;
+      minM2 = parseFloat($du('duPreset_minArea').value);
+      if(!(minM2 > 0)){ $du('duPresetMsg').textContent = 'Min area must be > 0.'; return; }
+      if($du('duPreset_depthMode').value === 'fixed'){
+        depthFt = parseFloat($du('duPreset_depthFt').value);
+        if(!(depthFt > 0)){ $du('duPresetMsg').textContent = 'Fixed depth must be > 0 ft.'; return; }
+      }
+      wantRemainder = $du('duPreset_remainder').checked;
+    }
+    closePresetModal();
     const undoSnap = window.duSnapshot ? window.duSnapshot() : null;
-    let name = def.name, i = 2;
-    while(STATE.du.scenarios.some(s => s.name === name)) name = `${def.name} (${i++})`;
+    let name = nameRaw, i = 2;
+    while(STATE.du.scenarios.some(s => s.name === name)) name = `${nameRaw} (${i++})`;
     createScenario(name, true);
     const hull = siteHullPoly();
     let created = 0, skipped = 0;
-    if(def.thr === null){
+    if(!isDig){
       if(hull && addPresetDU(hull, 'Site-wide — no action', 'Leave')) created++;
       else if(!hull) toast('Could not build the site hull (not enough sampled points).');
     } else {
-      const res = runHotspotGeneration(def.thr, 50, { namePrefix:`Dig ≥${def.thr}`, action:'HandExcavate' });
+      const res = runHotspotGeneration(thr, minM2,
+        { namePrefix:`Dig ≥${thr}`, action:'HandExcavate', maskRadiusM, depthFt });
       created += res.created; skipped += res.skipped;
-      if(hull){
+      if(hull && wantRemainder){
         // Remainder = hull minus the dig DUs (buffered 0.5 m so the overlap
         // guard never trips on shared borders). turf can throw on degenerate
         // geometry — a preset without a remainder DU is still usable.
@@ -5205,6 +5297,118 @@ function fitToData(){
     const cls = c.call==='PASS' ? 'pass' : c.call==='ACT' ? 'act' : 'tbd';
     const drv = (c.call==='ACT' && c.driver) ? ` (${c.driver})` : '';
     return `<span class="${cls}" title="${escHtml(c.label)}">${c.tag}: ${c.call}${drv}</span>`;
+  }
+  // Self-drawn scenario figure — replaces the html2canvas map snapshot, whose
+  // CSS-transformed SVG panes rendered DU boundaries displaced from the tiles.
+  // Pure canvas from the same lon/lat data the map uses: DU polygons colored by
+  // action with name labels, samples colored by Hg level, scale bar, north arrow.
+  // scenarioId = null draws the samples-only site overview.
+  function drawScenarioFigureDataUrl(scenarioId){
+    const feats = DATA.features.filter(f => f.properties.sampled);
+    if(!feats.length) return null;
+    const dus = []; if(scenarioId) eachDU(l => { if(l.duMeta.scenarioId === scenarioId) dus.push(l); });
+    const duPolys = dus.map(l => ({ meta:l.duMeta, gj:layerToPoly(l) })).filter(d => d.gj);
+    const ringsOf = g => g.type==='Polygon' ? [g.coordinates] : (g.type==='MultiPolygon' ? g.coordinates : []);
+    let minLon=Infinity, maxLon=-Infinity, minLat=Infinity, maxLat=-Infinity;
+    const eat = (lon,lat) => {
+      if(lon<minLon) minLon=lon; if(lon>maxLon) maxLon=lon;
+      if(lat<minLat) minLat=lat; if(lat>maxLat) maxLat=lat;
+    };
+    feats.forEach(f => eat(f.geometry.coordinates[0], f.geometry.coordinates[1]));
+    duPolys.forEach(d => ringsOf(d.gj.geometry).forEach(poly => poly.forEach(ring => ring.forEach(pt => eat(pt[0], pt[1])))));
+    const padLon=(maxLon-minLon)*0.07 || 1e-4, padLat=(maxLat-minLat)*0.07 || 1e-4;
+    minLon-=padLon; maxLon+=padLon; minLat-=padLat; maxLat+=padLat;
+    const midLat=(minLat+maxLat)/2;
+    const mPerDegLon = 111320*Math.cos(midLat*Math.PI/180), mPerDegLat = 110540;
+    const widthM=(maxLon-minLon)*mPerDegLon, heightM=(maxLat-minLat)*mPerDegLat;
+    const W = 1100;
+    const H = Math.max(280, Math.min(1400, Math.round(W*heightM/widthM)));
+    const scale = Math.min(W/widthM, H/heightM);          // px per meter, uniform (true aspect)
+    const ox=(W-widthM*scale)/2, oy=(H-heightM*scale)/2;
+    const X = lon => ox + (lon-minLon)*mPerDegLon*scale;
+    const Y = lat => oy + (maxLat-lat)*mPerDegLat*scale;
+    const cv = document.createElement('canvas'); cv.width=W; cv.height=H;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
+    // DU polygons (fill + outline in action color; evenodd honors holes)
+    duPolys.forEach(d => {
+      const a = DU_ACTION_LOOKUP[d.meta.action] || DU_ACTION_LOOKUP.Undecided;
+      ringsOf(d.gj.geometry).forEach(poly => {
+        ctx.beginPath();
+        poly.forEach(ring => {
+          ring.forEach((pt,i) => { const x=X(pt[0]), y=Y(pt[1]); i ? ctx.lineTo(x,y) : ctx.moveTo(x,y); });
+          ctx.closePath();
+        });
+        ctx.save(); ctx.globalAlpha=0.18; ctx.fillStyle=a.color; ctx.fill('evenodd'); ctx.restore();
+        ctx.lineWidth=2; ctx.strokeStyle=a.color; ctx.stroke();
+      });
+    });
+    // DU name labels (haloed) at the largest outer ring's centroid
+    ctx.font='600 13px -apple-system,"Segoe UI",Roboto,sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    duPolys.forEach(d => {
+      let best=null, bestA=-1;
+      ringsOf(d.gj.geometry).forEach(poly => {
+        try {
+          const A = turf.area({ type:'Feature', properties:{}, geometry:{ type:'Polygon', coordinates:[poly[0]] } });
+          if(A > bestA){ bestA=A; best=poly[0]; }
+        } catch(e){}
+      });
+      if(!best) return;
+      let sx=0, sy=0; best.forEach(pt => { sx+=X(pt[0]); sy+=Y(pt[1]); });
+      const cx=sx/best.length, cy=sy/best.length;
+      ctx.lineWidth=3.5; ctx.strokeStyle='rgba(255,255,255,.92)';
+      ctx.strokeText(d.meta.name, cx, cy);
+      ctx.fillStyle='#233040'; ctx.fillText(d.meta.name, cx, cy);
+    });
+    // sample dots colored by surface-Hg level
+    feats.forEach(f => {
+      const p = f.properties;
+      const lv = isNum(p.Hg) ? analyteLevel('Hg', p.Hg) : 'nd';
+      ctx.beginPath();
+      ctx.arc(X(f.geometry.coordinates[0]), Y(f.geometry.coordinates[1]), 3.4, 0, Math.PI*2);
+      ctx.fillStyle = LEVEL_COLOR[lv] || LEVEL_COLOR.nd; ctx.fill();
+      ctx.lineWidth=0.8; ctx.strokeStyle='rgba(0,0,0,.45)'; ctx.stroke();
+    });
+    // scale bar (ft, nice round length)
+    const pxPerFt = scale*0.3048;
+    const targetPx = W/6;
+    const niceFt = [50,100,200,250,500,1000,2000].reduce((b,c) =>
+      Math.abs(c*pxPerFt-targetPx) < Math.abs(b*pxPerFt-targetPx) ? c : b, 50);
+    const barPx = niceFt*pxPerFt, bx=18, by=H-20;
+    ctx.fillStyle='rgba(255,255,255,.85)'; ctx.fillRect(bx-8, by-22, barPx+78, 32);
+    ctx.strokeStyle='#222'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(bx+barPx,by); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx,by-5); ctx.lineTo(bx,by+5); ctx.moveTo(bx+barPx,by-5); ctx.lineTo(bx+barPx,by+5); ctx.stroke();
+    ctx.font='11px -apple-system,"Segoe UI",Roboto,sans-serif';
+    ctx.fillStyle='#222'; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+    ctx.fillText(niceFt+' ft', bx+barPx+8, by+4);
+    // north arrow
+    const nx=W-30, ny=34;
+    ctx.strokeStyle='#222'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(nx,ny+16); ctx.lineTo(nx,ny-8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(nx,ny-14); ctx.lineTo(nx-5,ny-4); ctx.lineTo(nx+5,ny-4); ctx.closePath();
+    ctx.fillStyle='#222'; ctx.fill();
+    ctx.font='600 12px -apple-system,"Segoe UI",Roboto,sans-serif'; ctx.textAlign='center';
+    ctx.fillText('N', nx, ny+30);
+    ctx.strokeStyle='#888'; ctx.lineWidth=1; ctx.strokeRect(0.5,0.5,W-1,H-1);
+    return cv.toDataURL('image/png');
+  }
+  function figureLegendHtml(scenarioId){
+    const parts = [
+      `<span><i style="background:${LEVEL_COLOR.over}"></i>Hg &gt; ROD</span>`,
+      `<span><i style="background:${LEVEL_COLOR.bg}"></i>Hg &gt; background</span>`,
+      `<span><i style="background:${LEVEL_COLOR.ok}"></i>Hg ≤ background</span>`,
+      `<span><i style="background:${LEVEL_COLOR.nd}"></i>ND / no result</span>`,
+    ];
+    if(scenarioId){
+      const seen = new Set();
+      eachDU(l => { if(l.duMeta.scenarioId === scenarioId) seen.add(l.duMeta.action); });
+      DU_ACTIONS.forEach(a => {
+        if(seen.has(a.key)) parts.push(`<span><i style="background:${a.color};opacity:.65"></i>DU: ${escHtml(a.label)}</span>`);
+      });
+    }
+    return `<div class="figleg">${parts.join('')}</div>`;
   }
   function buildReportHtml(){
     const today = new Date().toLocaleDateString(undefined, { year:'numeric', month:'long', day:'numeric' });
@@ -5272,8 +5476,10 @@ function fitToData(){
         return notes.length ? `<div class="basis"><b>${escHtml(m.name)}</b> — ${notes.join(' · ')}</div>` : '';
       }).join('');
       const t = scenarioTotals(sc.id);
+      const figUrl = drawScenarioFigureDataUrl(sc.id);
       scenSections += `<div class="card">
         <h3>Scenario: ${escHtml(sc.name)} <span class="meta">— ${t.nDUs} DU(s), ${t.acresTotal.toFixed(2)} ac${costsOn ? ', total ' + fmtMoney(t.costTotal) : ''}</span></h3>
+        ${figUrl ? `<div class="fig"><img src="${figUrl}" alt="Scenario map">${figureLegendHtml(sc.id)}</div>` : ''}
         <table><thead><tr>
           <th>DU</th><th>EU</th><th>Action</th><th>Permanent</th><th>Depth</th><th>Area (ac)</th><th>Vol (yd³)</th>
           <th>Hg mass (kg)</th><th>n</th><th>Hg mean/max/UCL-C</th><th>As mean/max/UCL-C</th>${costsOn ? '<th>Cost</th>' : ''}<th>Call</th>
@@ -5320,16 +5526,20 @@ function fitToData(){
   .note{font-size:9.5px;color:#555;margin:4px 0}
   .basis{font-size:9px;color:#666;margin:2px 0}
   .card{page-break-inside:avoid;margin-bottom:10px}
-  #mapFig img{max-width:100%;border:1px solid #999;margin:6px 0}
+  .fig{margin:6px 0}
+  .fig img{width:100%;border:1px solid #999;display:block}
+  .figleg{font-size:9px;color:#444;display:flex;gap:12px;flex-wrap:wrap;margin-top:3px}
+  .figleg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:3px;vertical-align:-1px}
   .noprint{position:fixed;top:10px;right:10px}
   .noprint button{font-size:13px;padding:8px 16px;cursor:pointer}
   @media print{.noprint{display:none}}
 </style></head><body>
 <div class="noprint"><button onclick="window.print()">🖨 Print / Save as PDF</button></div>
 <h1>Decision-Unit Report — Area Between Piles (ABP)</h1>
-<div class="meta">Sulphur Bank Mercury Mine Superfund Site · Generated ${today} · Active screening standard: ${stdLine}
+<div class="meta">Sulphur Bank Mercury Mine Superfund Site · OU1 · D3913200 · Generated ${today} · Active screening standard: ${stdLine}
   · Criteria: Hg ROD = ${rodHg!=null?rodHg:'—'} mg/kg, Hg background (PMB) = ${pmbHg!=null?pmbHg:'—'} mg/kg</div>
-<div id="mapFig"></div>
+${(u => u ? `<h2>Site overview</h2><div class="fig"><img src="${u}" alt="Site overview">${figureLegendHtml(null)}</div>
+<p class="note">Sampled locations colored by surface (0–0.5 ft) Hg vs the ROD and background levels. Each scenario section below repeats this base with that scenario's DU boundaries.</p>` : '')(drawScenarioFigureDataUrl(null))}
 <h2>Scenario comparison</h2>
 <table><thead><tr>${cmpHead.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${cmpBody}</tbody></table>
 <p class="note">Acres disturbed = hand-excavate + excavate&amp;consolidate + amend surface. Permanent = acres where contaminated soil is removed. Residual mean Hg is area-weighted across the scenario's DUs.${costsOn ? ' Costs are screening-level (ROM) from the user-entered unit rates below.' : ''}</p>
@@ -5349,21 +5559,8 @@ ${costSection}
     try { w = window.open('', '_blank'); } catch(e){}
     if(!w){ toast('Popup blocked — allow popups for this site to open the report.', 4200); return; }
     w.document.open();
-    w.document.write(buildReportHtml());
+    w.document.write(buildReportHtml());   // figures are self-drawn canvases, already embedded as data URLs
     w.document.close();
-    // best-effort map snapshot (html2canvas can fail on tile CORS — report still works)
-    if(typeof renderFigureCanvas === 'function'){
-      renderFigureCanvas().then(canvas => {
-        try {
-          const holder = w.document.getElementById('mapFig');
-          if(holder){
-            const img = w.document.createElement('img');
-            img.src = canvas.toDataURL('image/png');
-            holder.appendChild(img);
-          }
-        } catch(e){ /* window closed or blocked — fine */ }
-      }).catch(()=>{ /* snapshot unavailable — report is complete without it */ });
-    }
   }
 
   // ---- UI render ---------------------------------------------------------
@@ -5609,10 +5806,23 @@ ${costSection}
     download(expFileName('ABP_DU_stats') + '.csv', perDuStatsToDelim(','), 'text/csv');
   });
   $du('duHotspotRun').addEventListener('click', generateHotspotDUs);
-  $du('duPresetNoAction').addEventListener('click', () => buildPresetScenario('noaction'));
-  $du('duPreset1000').addEventListener('click',     () => buildPresetScenario('dig1000'));
-  $du('duPresetROD').addEventListener('click',      () => buildPresetScenario('digROD'));
-  $du('duPresetBG').addEventListener('click',       () => buildPresetScenario('digBG'));
+  $du('duPresetNoAction').addEventListener('click', () => openPresetModal('noaction'));
+  $du('duPreset1000').addEventListener('click',     () => openPresetModal('dig1000'));
+  $du('duPresetROD').addEventListener('click',      () => openPresetModal('digROD'));
+  $du('duPresetBG').addEventListener('click',       () => openPresetModal('digBG'));
+  // preset modal wiring
+  $du('duPresetClose').addEventListener('click', closePresetModal);
+  $du('duPresetCancel').addEventListener('click', closePresetModal);
+  $du('duPresetBuild').addEventListener('click', buildPresetFromModal);
+  $du('duPresetModal').addEventListener('click', e => { if(e.target.id === 'duPresetModal') closePresetModal(); });
+  $du('duPreset_depthMode').addEventListener('change', e => {
+    $du('duPreset_depthFt').style.display = e.target.value === 'fixed' ? '' : 'none';
+  });
+  document.addEventListener('keydown', e => {
+    if($du('duPresetModal').hidden) return;
+    if(e.key === 'Escape') closePresetModal();
+    else if(e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') buildPresetFromModal();
+  });
   $du('duReportBtn').addEventListener('click', openPrintableReport);
 
   // unit-cost inputs <-> STATE.du.costs (persisted with the project; not in PERSIST_CONTROLS)
