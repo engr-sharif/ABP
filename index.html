@@ -206,8 +206,27 @@ select,input[type=text],input[type=number]{width:100%;padding:5px 7px;border:1px
 .btn.primary:hover{background:var(--accent-dk)}
 select,input[type=text],input[type=number],input[type=range]{transition:border-color .15s,box-shadow .15s}
 select:focus,input[type=text]:focus,input[type=number]:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,130,246,.25);outline:none}
-.leaflet-marker-icon.sample-icon{transition:transform .12s var(--ease)}
-.leaflet-marker-icon.sample-icon:hover{transform:scale(1.35);z-index:10000 !important}
+/* Subtle, elegant hover: a hint of lift + a soft halo, so you can see what
+   you're about to click. The transform goes on the INNER <svg> (not the marker
+   container) because Leaflet owns the container's transform for positioning —
+   scaling the container would override it and fling the marker to the corner. */
+.leaflet-marker-icon.sample-icon > svg{transition:transform .15s var(--ease),filter .15s var(--ease);transform-origin:50% 50%}
+@media (hover:hover){
+  .leaflet-marker-icon.sample-icon:hover > svg{
+    transform:scale(1.16) translateY(-0.5px);
+    filter:drop-shadow(0 2px 2px rgba(0,0,0,.28)) drop-shadow(0 0 2.5px rgba(255,255,255,.85));
+  }
+}
+.leaflet-marker-icon.sample-icon:hover{z-index:10000 !important;cursor:pointer}
+body.dark .leaflet-marker-icon.sample-icon:hover > svg{
+  filter:drop-shadow(0 2px 2px rgba(0,0,0,.5)) drop-shadow(0 0 3px rgba(120,180,255,.8));
+}
+/* Drawn shapes + DUs: a soft glow on hover (they're geo-anchored, so glow not lift) */
+@media (hover:hover){
+  path.leaflet-interactive{transition:filter .15s var(--ease)}
+  path.leaflet-interactive:hover{filter:drop-shadow(0 1px 2px rgba(0,0,0,.35)) drop-shadow(0 0 2px rgba(0,0,0,.25));cursor:pointer}
+}
+body.dark path.leaflet-interactive:hover{filter:drop-shadow(0 1px 2px rgba(0,0,0,.6)) drop-shadow(0 0 2px rgba(150,190,255,.5))}
 .hint{font-size:11px;color:var(--muted);margin:4px 0}
 
 /* Map */
@@ -2179,6 +2198,11 @@ let _selectedShape = null, _editingBoundary = null;
 drawnItems.on('click', e => {
   const layer = e.layer || e.propagatedFrom;
   if(layer) selectDrawnShape(layer);
+});
+// On hover, bring the shape to front so its subtle glow isn't hidden under overlaps.
+drawnItems.on('mouseover', e => {
+  const layer = e.layer || e.propagatedFrom;
+  if(layer && layer.bringToFront) layer.bringToFront();
 });
 function selectDrawnShape(layer){
   if(_editingBoundary && _editingBoundary !== layer) stopBoundaryEdit();
