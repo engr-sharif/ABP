@@ -305,8 +305,6 @@ body.dark .du-depth-mode.manual{color:#e2c075}
 .leaflet-popup.du-popup .leaflet-popup-content{max-height:none !important;margin:10px 14px;line-height:1.35}
 .du-pop-head{font-size:11px;color:var(--muted);padding-bottom:4px;border-bottom:1px solid var(--line);margin-bottom:4px}
 .du-pop-head b{color:var(--ink)}
-.popup-bl .bl-chart-wrap{margin:8px 14px 0;border-top:1px solid var(--line);padding-top:8px}
-.popup-bl .bl-depth-chart{width:100% !important;max-width:400px;height:150px !important;display:block}
 .popup-bl .bl-notes{font-size:11px;color:var(--muted);margin:8px 14px 0;border-top:1px solid var(--line);padding-top:6px}
 .popup-bl .copybtn{margin:8px 14px 12px}
 .popup-bl .bl-wrap{display:flex;gap:12px;align-items:flex-start;padding:0 14px}
@@ -1528,8 +1526,6 @@ function popupHtml(p){
   }
 
   // ---- data table with tri-color cells + threshold reference rows ----
-  const soilLayers = layers.filter(l=>l.kind==='soil' && l.values && ANALYTES.some(a=>isNum(l.values[a])));
-  const showChart = soilLayers.length >= 2;
   let body;
   if(layers.length){
     const rows = layers.map(l=>{
@@ -1602,10 +1598,6 @@ function popupHtml(p){
     p.field_note?`Field note: ${p.field_note}`:'', p.notes?`Notes: ${p.notes}`:''
   ].filter(Boolean).join('\n');
 
-  const chartBlock = showChart
-    ? `<div class="bl-chart-wrap"><canvas class="bl-depth-chart" data-id="${p.id}" width="380" height="150"></canvas></div>`
-    : '';
-
   return `<div class="popup popup-bl">
     <div class="pbl-head">
       <span class="pbl-id">${p.id}</span>${roundTag}${rodPill}${hiBadge}
@@ -1613,74 +1605,12 @@ function popupHtml(p){
     ${meta?`<div class="bl-meta">${meta}</div>`:''}
     ${statusBar}
     ${body}
-    ${chartBlock}
     ${metalsPanelHtml(p)}
     ${notes?`<div class="bl-notes">${notes}</div>`:''}
     <button class="btn copybtn" onclick='navigator.clipboard&&navigator.clipboard.writeText(${JSON.stringify(txt)})'>Copy details</button>
   </div>`;
 }
 
-// Render a Chart.js depth-vs-concentration chart into a popup's canvas, lazily on popupopen.
-function renderDepthChart(canvas){
-  const id = canvas.getAttribute('data-id');
-  const feat = DATA.features.find(f=>f.properties.id===id);
-  if(!feat) return;
-  const layers = sampleLayers(feat.properties).filter(l=>l.kind==='soil');
-  if(layers.length < 2) return;
-  // each analyte gets a depth-vs-value series (one point per layer's mid-depth);
-  // value uses a log scale so the 0.1–3000 mg/kg range stays readable.
-  const datasets = ANALYTES.map(a=>{
-    const points = layers.map(l=>{
-      const v = l.values && l.values[a];
-      if(!isNum(v) || v<=0) return null;
-      const mid = (((l.top||0) + (l.bot||0.5))/2);
-      return { x:v, y:mid, _layer:l.label };
-    }).filter(Boolean);
-    if(!points.length) return null;
-    return {
-      label:a, data:points, borderColor:ANALYTE_COLOR[a]||'#444',
-      backgroundColor:ANALYTE_COLOR[a]||'#444', pointRadius:3, pointHoverRadius:5,
-      borderWidth:1.8, showLine:true, tension:0, fill:false
-    };
-  }).filter(Boolean);
-  // Reference lines: ROD (red dashed) and Background (amber dotted) for Hg — the
-  // primary driver — so the depth profile shows where it crosses each standard.
-  const yMax = Math.max(...layers.map(l=>l.bot||0.5), 0.5);
-  const rodHg = CRITERIA.ROD.Hg, pmbHg = (CRITERIA.PMB||{}).Hg;
-  if(isNum(rodHg)) datasets.push({ label:`ROD Hg = ${rodHg}`, data:[{x:rodHg,y:0},{x:rodHg,y:yMax}],
-    borderColor:'#d7191c', borderWidth:1.2, borderDash:[4,3], pointRadius:0, showLine:true, tension:0, fill:false });
-  if(isNum(pmbHg)) datasets.push({ label:`Background Hg = ${pmbHg}`, data:[{x:pmbHg,y:0},{x:pmbHg,y:yMax}],
-    borderColor:'#f5a733', borderWidth:1.2, borderDash:[2,3], pointRadius:0, showLine:true, tension:0, fill:false });
-  if(canvas._chart) canvas._chart.destroy();
-  canvas._chart = new Chart(canvas, {
-    type:'scatter', data:{datasets},
-    options:{
-      animation:false, responsive:false, maintainAspectRatio:false,
-      scales:{
-        x:{ type:'logarithmic', title:{display:true, text:'Concentration (mg/kg)', font:{size:10}},
-            ticks:{font:{size:9}} },
-        y:{ reverse:true, min:0, max:yMax, title:{display:true, text:'Depth (ft)', font:{size:10}},
-            ticks:{font:{size:9}} }
-      },
-      plugins:{
-        legend:{position:'right', labels:{boxWidth:8, padding:3, font:{size:8.5}}},
-        tooltip:{callbacks:{label:c=>{
-          const lay=c.raw && c.raw._layer ? ' @ '+c.raw._layer : '';
-          return c.dataset.label+': '+c.raw.x+' mg/kg'+lay;
-        }}}
-      }
-    }
-  });
-}
-// Wire chart rendering + cleanup to popup open/close
-map.on('popupopen', e=>{
-  const c = e.popup._container && e.popup._container.querySelector('.bl-depth-chart');
-  if(c) renderDepthChart(c);
-});
-map.on('popupclose', e=>{
-  const c = e.popup._container && e.popup._container.querySelector('.bl-depth-chart');
-  if(c && c._chart){ c._chart.destroy(); c._chart=null; }
-});
 
 // ---- filter predicate (SECTION 8 uses STATE.filters) --------------------
 function passesFilter(p){
