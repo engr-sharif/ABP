@@ -480,6 +480,11 @@ body:not(.tab-open) #coords{left:0}
       <label class="field">Scenario</label>
       <select id="duEdit_scenario"></select>
 
+      <label class="field">EU group (optional)</label>
+      <input type="text" id="duEdit_eu" maxlength="40" autocomplete="off" list="duEuGroupList" placeholder="e.g. EU-1 — DUs sharing a group pool into one exposure-unit UCL">
+      <datalist id="duEuGroupList"></datalist>
+      <p class="hint" style="margin-top:4px">Give two or more DUs the same EU group and the Compare section shows a pooled UCL across their combined samples — how formal per-Exposure-Unit compliance is judged.</p>
+
       <label class="field">Notes (optional)</label>
       <textarea id="duEdit_notes" rows="2"></textarea>
     </div>
@@ -845,6 +850,14 @@ body:not(.tab-open) #coords{left:0}
             <button class="btn" id="duDeleteScenario" style="flex:1;min-width:60px">Delete</button>
           </div>
           <p class="hint" style="margin-top:6px">The active scenario's DUs are solid and editable; other scenarios' DUs stay visible as dashed ghosts for context. "Unassigned" always exists and catches DUs from deleted scenarios.</p>
+          <label class="field">Preset scenarios (one click, undoable)</label>
+          <div class="row" style="gap:4px;flex-wrap:wrap">
+            <button class="btn" id="duPresetNoAction" style="flex:1;min-width:90px" title="One site-wide DU set to Leave — the baseline row">No action</button>
+            <button class="btn" id="duPreset1000"     style="flex:1;min-width:90px" title="Hand-excavate wherever interpolated Hg ≥ 1000 mg/kg">Dig ≥ 1000</button>
+            <button class="btn" id="duPresetROD"      style="flex:1;min-width:90px" title="Hand-excavate wherever interpolated Hg ≥ the ROD level">Dig ≥ ROD</button>
+            <button class="btn" id="duPresetBG"       style="flex:1;min-width:90px" title="Hand-excavate wherever interpolated Hg ≥ background">Dig ≥ BG</button>
+          </div>
+          <p class="hint">Each preset builds a complete FS-style alternative: dig-out DUs at that threshold plus a "remainder — leave" DU, in its own new scenario, so the compare table gets a full row. Undo with ↺ Oops.</p>
         </div>
       </div>
 
@@ -856,6 +869,7 @@ body:not(.tab-open) #coords{left:0}
             <button class="btn" id="duCompareRender" style="flex:1;min-width:80px">Refresh table</button>
             <button class="btn" id="duCompareCopy" style="flex:1;min-width:80px">Copy TSV</button>
             <button class="btn" id="duCompareCSV" style="flex:1;min-width:80px">Download CSV</button>
+            <button class="btn primary" id="duReportBtn" style="flex:1;min-width:110px" title="Print-ready report: scenario comparison, per-DU detail with basis notes, EU pooling, costs, methodology">🖨 Printable report</button>
           </div>
           <div id="duCompareOut" style="margin-top:8px;overflow-x:auto"></div>
           <label class="field">Per-DU statistics (one row per DU)</label>
@@ -876,6 +890,34 @@ body:not(.tab-open) #coords{left:0}
           <input type="number" id="duHotspotMinArea" value="50" min="1" step="1">
           <button class="btn" id="duHotspotRun" style="margin-top:8px;width:100%">Generate hot-spot DUs</button>
           <p class="hint">Runs the IDW delineation at the chosen Hg threshold and converts each contour polygon into a DU (action = <i>Hand-excavate hot spot</i>) assigned to the active scenario.</p>
+        </div>
+      </div>
+
+      <div class="du-sub closed" id="duSub-costs">
+        <h3>Unit costs (screening) <span class="chev">▾</span></h3>
+        <div class="body">
+          <p class="hint" style="margin-top:2px">Enter <b>your</b> unit rates — scenario cost columns stay blank until at least one rate is set. Rough-order-of-magnitude screening only, not an engineer's estimate.</p>
+          <div class="row" style="gap:6px">
+            <div style="flex:1"><label class="field">Excavation ($/yd³)</label>
+              <input type="number" id="duCost_excavation" min="0" step="1" placeholder="0 = not set"></div>
+            <div style="flex:1"><label class="field">Disposal, off-site ($/yd³)</label>
+              <input type="number" id="duCost_disposal" min="0" step="1" placeholder="0 = not set"></div>
+          </div>
+          <div class="row" style="gap:6px">
+            <div style="flex:1"><label class="field">Placement, on-site ($/yd³)</label>
+              <input type="number" id="duCost_placement" min="0" step="1" placeholder="0 = not set"></div>
+            <div style="flex:1"><label class="field">Amendment ($/ac)</label>
+              <input type="number" id="duCost_amendment" min="0" step="100" placeholder="0 = not set"></div>
+          </div>
+          <div class="row" style="gap:6px">
+            <div style="flex:1"><label class="field">Revegetation ($/ac)</label>
+              <input type="number" id="duCost_reveg" min="0" step="100" placeholder="0 = not set"></div>
+            <div style="flex:1"><label class="field">O&amp;M ($/ac·yr)</label>
+              <input type="number" id="duCost_omAnnual" min="0" step="100" placeholder="0 = not set"></div>
+          </div>
+          <label class="field">O&amp;M horizon (years)</label>
+          <input type="number" id="duCost_omYears" min="1" max="100" step="1" value="30">
+          <p class="hint">Formulas — Leave: reveg×ac. Amend: (amendment+reveg)×ac, plus O&amp;M×ac×years. Hand-excavate: (excavation+disposal)×yd³ + reveg×ac. Excavate&amp;consolidate: (excavation+placement)×yd³ + reveg×ac. Rates persist with the project file.</p>
         </div>
       </div>
 
@@ -3614,12 +3656,19 @@ function fitToData(){
   'use strict';
 
   // ---- constants ---------------------------------------------------------
+  // permanent / permanence feed the CERCLA "long-term effectiveness & permanence"
+  // criterion in the compare table and printable report.
   const DU_ACTIONS = [
-    { key:'Leave',               label:'Leave / revegetate',           color:'#1a9641', disturbs:false },
-    { key:'Amend',               label:'In-place amendment (MercLok)', color:'#2c7bb6', disturbs:true  },
-    { key:'HandExcavate',        label:'Hand-excavate hot spot',       color:'#fdae61', disturbs:true, removes:true },
-    { key:'ExcavateConsolidate', label:'Excavate & consolidate',       color:'#d7191c', disturbs:true, consolidates:true },
-    { key:'Undecided',           label:'Undecided',                    color:'#9e9e9e', disturbs:false },
+    { key:'Leave',               label:'Leave / revegetate',           color:'#1a9641', disturbs:false,
+      permanent:false, permanence:'contamination remains in place — relies on controls/monitoring' },
+    { key:'Amend',               label:'In-place amendment (MercLok)', color:'#2c7bb6', disturbs:true,
+      permanent:false, permanence:'Hg stabilized in place (treatment) — long-term monitoring' },
+    { key:'HandExcavate',        label:'Hand-excavate hot spot',       color:'#fdae61', disturbs:true, removes:true,
+      permanent:true,  permanence:'permanent — contaminated soil removed' },
+    { key:'ExcavateConsolidate', label:'Excavate & consolidate',       color:'#d7191c', disturbs:true, consolidates:true,
+      permanent:true,  permanence:'permanent for this DU — soil moved to on-site consolidation area' },
+    { key:'Undecided',           label:'Undecided',                    color:'#9e9e9e', disturbs:false,
+      permanent:false, permanence:'no action assigned yet' },
   ];
   const DU_ACTION_LOOKUP = {};
   DU_ACTIONS.forEach(a => DU_ACTION_LOOKUP[a.key] = a);
@@ -3649,6 +3698,19 @@ function fitToData(){
     includeEA: true,
     compareStandard: 'ROD',  // 'ROD' (Hg 204, mine-area) | 'PMB' (Hg 58, accessible/EIC-area) | 'BOTH' side-by-side
   };
+  // Screening-level (ROM) unit costs — all default 0 = "not set". Scenario cost
+  // columns stay blank until the user enters their own numbers; the app never
+  // invents dollar values.
+  const DU_COST_DEFAULTS = {
+    excavationPerYd3: 0,   // excavate + handle, $/yd³
+    disposalPerYd3:   0,   // off-site transport & disposal, $/yd³ (hand-excavate)
+    placementPerYd3:  0,   // on-site placement in consolidation area, $/yd³
+    amendmentPerAc:   0,   // in-place amendment application, $/acre
+    revegPerAc:       0,   // revegetation / restoration, $/acre (applies to every decided action)
+    omAnnualPerAc:    0,   // annual O&M / monitoring on amended acres, $/acre·yr
+    omYears:          30,  // O&M horizon (FS convention)
+  };
+  STATE.du.costs = Object.assign({}, DU_COST_DEFAULTS, STATE.du.costs || {});
 
   function genId(prefix){ return prefix + '_' + Math.random().toString(36).slice(2, 9); }
 
@@ -3811,9 +3873,10 @@ function fitToData(){
     layer._duStatsCache = { key, stats };
     return stats;
   }
-  function computeDuStats(layer){
-    const samples = pointsInsideDU(layer);
-    const n = samples.length;
+  // Per-analyte descriptive stats + UCLs for an arbitrary sample population.
+  // Shared by computeDuStats (one DU) and the EU pooling (samples merged across
+  // member DUs, deduped by sample id).
+  function analyteStatsFor(samples){
     const byAnalyte = {};
     ANALYTES.forEach(a => {
       const { vals, nDetect, nND } = effValuesForUCL(samples, a);
@@ -3847,6 +3910,12 @@ function fitToData(){
         mdl: dls.length ? Math.max(...dls) : null,
       };
     });
+    return byAnalyte;
+  }
+  function computeDuStats(layer){
+    const samples = pointsInsideDU(layer);
+    const n = samples.length;
+    const byAnalyte = analyteStatsFor(samples);
     const meta = layer.duMeta || {};
     const depthFt = meta.depthFt || 0.5;
     const bulkDensity = (typeof meta.bulkDensity === 'number' && meta.bulkDensity > 0)
@@ -3993,6 +4062,7 @@ function fitToData(){
       bulkDensity: opts.bulkDensity || null,
       postExcavationMean: opts.postExcavationMean || null,
       destinationDuId: opts.destinationDuId || null,
+      euGroup: opts.euGroup || null,       // Exposure-Unit group — DUs sharing a name pool their samples for one EU-level UCL
       notes: opts.notes || '',
     };
     if(opts.depthFt != null){
@@ -4174,10 +4244,11 @@ function fitToData(){
     const actionTag = (meta.actionMode === 'auto')
       ? ` <span class="du-depth-mode auto" title="${(meta.actionBasis||'').replace(/"/g,'&quot;')}">auto</span>`
       : '';
+    const permTag = `<span title="${act.permanence.replace(/"/g,'&quot;')}" style="cursor:help">${act.permanent?'◆ permanent':'◇ non-permanent'}</span>`;
     return `<div class="du-report">
       <div><b>DU: ${meta.name}</b> · ${badges}</div>
       <div style="font-size:10.5px;color:var(--muted);margin:2px 0">
-        Action: <b>${act.label}</b>${actionTag} · Scenario: ${sc?sc.name:'?'}<br>
+        Action: <b>${act.label}</b>${actionTag} · ${permTag} · Scenario: ${sc?sc.name:'?'}${meta.euGroup?` · EU: <b>${meta.euGroup}</b>`:''}<br>
         ${brk} · ${stats.area_ac.toFixed(3)} ac · depth ${meta.depthFt} ft${depthTag} · vol ${fmtInt(stats.volume_yd3)} yd³ · Hg mass ${fmt(stats.HgMass_kg,2)} kg
       </div>
       <table>
@@ -4254,7 +4325,7 @@ function fitToData(){
     ['Sb','Tl'].forEach(a=>{ const s=stats.byAnalyte[a]; if(s&&s.hasResult&&s.allND) sbtl.push(`${a} all ND`); });
     return `<div class="du-compact">
       <div style="margin-bottom:2px">${badges}</div>
-      <div class="dc-meta">${act.label} · ${sc?sc.name:'?'}</div>
+      <div class="dc-meta">${act.label} ${act.permanent?'◆':'◇'} · ${sc?sc.name:'?'}${meta.euGroup?` · EU ${meta.euGroup}`:''}</div>
       <div class="dc-meta">n=${stats.n} (R1:${db['1']} R2:${db['2']} EA:${db.EA}) · ${stats.area_ac.toFixed(3)} ac · ${meta.depthFt} ft${depthTag}</div>
       <div class="dc-meta">vol ${fmtInt(stats.volume_yd3)} yd³ · Hg mass ${fmt(stats.HgMass_kg,0)} kg</div>
       <div class="dc-an">${rows}${sbtl.length?`<div style="color:var(--muted)">${sbtl.join(' · ')}</div>`:''}</div>
@@ -4346,6 +4417,11 @@ function fitToData(){
     _$('duEdit_pem').placeholder = 'default = PMB ' + ((CRITERIA.PMB||{}).Hg ?? '?');
     _populateScenarioSelect(meta.scenarioId);
     _populateDestSelect(meta);
+    _$('duEdit_eu').value        = meta.euGroup || '';
+    // datalist of EU names already in use, for consistent spelling across DUs
+    const euSeen = new Set();
+    eachDU(x => { const g = (x.duMeta.euGroup||'').trim(); if(g) euSeen.add(g); });
+    _$('duEuGroupList').innerHTML = [...euSeen].sort().map(g => `<option value="${g.replace(/"/g,'&quot;')}">`).join('');
     _$('duEdit_notes').value     = meta.notes || '';
     _toggleConditionalRows(meta.action);
     _$('duModalMsg').textContent = '';
@@ -4384,6 +4460,7 @@ function fitToData(){
     meta.bulkDensity = bd; meta.postExcavationMean = pem;
     meta.destinationDuId = (action === 'ExcavateConsolidate') ? destId : null;
     meta.scenarioId = scenId;
+    meta.euGroup = _$('duEdit_eu').value.trim() || null;
     meta.notes = notes;
     applyDUStyle(l); attachShapeInfo(l); refreshDUUI(); scheduleAutosave();
     if(window.getSelectedShape && window.getSelectedShape()===l && window.renderDrawSelection) window.renderDrawSelection();
@@ -4512,12 +4589,47 @@ function fitToData(){
     return false;
   };
 
+  // ---- screening costs (ROM) ---------------------------------------------
+  // All unit costs default to 0 = "not set"; totals only render once the user
+  // has entered at least one rate (hasCosts). Formulas per action:
+  //   Leave                = reveg×ac
+  //   Amend                = (amendment + reveg)×ac ; O&M = omAnnual×ac × omYears
+  //   HandExcavate         = (excavation + disposal)×yd³ + reveg×ac
+  //   ExcavateConsolidate  = (excavation + placement)×yd³ + reveg×ac
+  function hasCosts(){
+    const c = STATE.du.costs || {};
+    return ['excavationPerYd3','disposalPerYd3','placementPerYd3','amendmentPerAc','revegPerAc','omAnnualPerAc']
+      .some(k => typeof c[k] === 'number' && c[k] > 0);
+  }
+  function duCostForDU(l){
+    const c = STATE.du.costs || {};
+    const num = v => (typeof v === 'number' && isFinite(v) && v > 0) ? v : 0;
+    const meta = l.duMeta, stats = duStats(l);
+    const ac = stats.area_ac, yd3 = stats.volume_yd3;
+    let capital = 0, omAnnual = 0;
+    if(meta.action === 'Leave'){
+      capital = num(c.revegPerAc) * ac;
+    } else if(meta.action === 'Amend'){
+      capital  = (num(c.amendmentPerAc) + num(c.revegPerAc)) * ac;
+      omAnnual = num(c.omAnnualPerAc) * ac;
+    } else if(meta.action === 'HandExcavate'){
+      capital = (num(c.excavationPerYd3) + num(c.disposalPerYd3)) * yd3 + num(c.revegPerAc) * ac;
+    } else if(meta.action === 'ExcavateConsolidate'){
+      capital = (num(c.excavationPerYd3) + num(c.placementPerYd3)) * yd3 + num(c.revegPerAc) * ac;
+    }
+    return { capital, omAnnual };
+  }
+  function fmtMoney(v){
+    return (typeof v === 'number' && isFinite(v)) ? '$' + Math.round(v).toLocaleString() : '—';
+  }
+
   // ---- scenario rollup ---------------------------------------------------
   function scenarioTotals(scenarioId){
     const dus = []; eachDU(l => { if(l.duMeta.scenarioId === scenarioId) dus.push(l); });
     let acresTotal = 0, acresDisturbed = 0, volumeDisturbed = 0;
     let HgMassRemoved = 0, HgMassStabilized = 0;
     let wrNum = 0, wrDen = 0;
+    let acresPermanent = 0, costCapital = 0, costOMAnnual = 0;
     const acresByAction = {};
     DU_ACTIONS.forEach(a => acresByAction[a.key] = 0);
     const issues = [];
@@ -4553,11 +4665,23 @@ function fitToData(){
       HgMassStabilized += stabilized;
       wrNum += residual * stats.area_ac;
       wrDen += stats.area_ac;
+      const actDef = DU_ACTION_LOOKUP[meta.action] || DU_ACTION_LOOKUP.Undecided;
+      if(actDef.permanent) acresPermanent += stats.area_ac;
+      const cost = duCostForDU(l);
+      costCapital  += cost.capital;
+      costOMAnnual += cost.omAnnual;
     });
+    const omYears = (STATE.du.costs && STATE.du.costs.omYears > 0) ? STATE.du.costs.omYears : 30;
     return {
       nDUs: dus.length,
       acresTotal, acresDisturbed, volumeDisturbed_yd3: volumeDisturbed,
       acresByAction,
+      acresPermanent,
+      pctPermanent: acresTotal > 0 ? 100 * acresPermanent / acresTotal : null,
+      costCapital,
+      costOM: costOMAnnual * omYears,
+      costTotal: costCapital + costOMAnnual * omYears,
+      omYears,
       HgMassRemoved_kg: HgMassRemoved,
       HgMassStabilized_kg: HgMassStabilized,
       residualMeanHg: wrDen > 0 ? wrNum / wrDen : null,
@@ -4581,10 +4705,14 @@ function fitToData(){
   function renderCompareTable(){
     const rows = compareTableRows();
     const stds = activeStandards();
+    const costsOn = hasCosts();
+    const omY = (STATE.du.costs && STATE.du.costs.omYears > 0) ? STATE.du.costs.omYears : 30;
     const passCols = stds.map(s => s==='PMB' ? 'PASS / Background' : 'PASS / ROD');
     const headers = [
       'Scenario','# DUs','Acres total','Acres disturbed','Disturbed vol (yd³)',
       'Hg removed (kg)','Hg stabilized (kg)','Residual mean Hg (mg/kg)',
+      'Permanent (ac)',
+      ...(costsOn ? ['Capital', `O&M (${omY} yr)`, 'Total'] : []),
       ...passCols,
       ...DU_ACTIONS.map(a => `ac: ${a.key}`),
       'Issues'
@@ -4600,6 +4728,10 @@ function fitToData(){
         const p = s==='PMB' ? r.passPMB : r.passROD;
         return `<td>${p} / ${r.nDUs}</td>`;
       }).join('');
+      const permCell = `<td>${r.acresPermanent.toFixed(3)}${r.pctPermanent!=null ? ` <span style="color:var(--muted)">(${Math.round(r.pctPermanent)}%)</span>` : ''}</td>`;
+      const costCells = costsOn
+        ? `<td>${fmtMoney(r.costCapital)}</td><td>${fmtMoney(r.costOM)}</td><td><b>${fmtMoney(r.costTotal)}</b></td>`
+        : '';
       return `<tr${active}>
         <td style="text-align:left">${r.name}</td>
         <td>${r.nDUs}</td>
@@ -4609,6 +4741,8 @@ function fitToData(){
         <td>${r.HgMassRemoved_kg.toFixed(2)}</td>
         <td>${r.HgMassStabilized_kg.toFixed(2)}</td>
         <td>${r.residualMeanHg!=null ? r.residualMeanHg.toFixed(1) : '—'}</td>
+        ${permCell}
+        ${costCells}
         ${passCells}
         ${actionAcres}
         ${issuesCell}
@@ -4618,16 +4752,80 @@ function fitToData(){
       ? 'Showing PASS counts under <b>both</b> standards (ROD 204 / Background 58).'
       : (stds[0]==='PMB' ? 'Showing PASS counts vs <b>background (PMB Hg 58)</b>.'
                          : 'Showing PASS counts vs <b>ROD (Hg 204)</b>.');
+    const costNote = costsOn
+      ? ` Costs are <b>screening-level (ROM)</b> from your unit rates in "Unit costs".`
+      : ` Cost columns appear once you enter unit rates in <b>Unit costs</b> below.`;
     document.getElementById('duCompareOut').innerHTML =
       `<table class="du-compare-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table>
-       <p class="hint">${stdNote} Switch in DU settings → "Compare DU UCL against". Acres disturbed = hand-excavate + excavate&amp;consolidate + amend surface. Residual mean Hg is area-weighted. CSV/TSV exports include all columns.</p>`;
+       <p class="hint">${stdNote} Switch in DU settings → "Compare DU UCL against". Acres disturbed = hand-excavate + excavate&amp;consolidate + amend surface. Permanent = acres where soil is removed (hand-excavate, excavate&amp;consolidate). Residual mean Hg is area-weighted.${costNote} CSV/TSV exports include all columns.</p>`
+      + renderEuTableHtml();
+  }
+
+  // ---- Exposure-Unit pooling ----------------------------------------------
+  // DUs that share an euGroup (within a scenario) pool their in-DU samples —
+  // deduplicated by sample id — into a single EU-level population, mirroring
+  // how formal compliance is judged per Exposure Unit rather than per DU.
+  function euRowsForAllScenarios(){
+    const groups = {};   // "scenarioId||euName" -> { scenario, eu, layers[] }
+    eachDU(l => {
+      const eu = (l.duMeta.euGroup || '').trim();
+      if(!eu) return;
+      const key = l.duMeta.scenarioId + '||' + eu.toLowerCase();
+      if(!groups[key]){
+        const sc = STATE.du.scenarios.find(s => s.id === l.duMeta.scenarioId);
+        groups[key] = { scenario: sc ? sc.name : l.duMeta.scenarioId, eu, layers: [] };
+      }
+      groups[key].layers.push(l);
+    });
+    return Object.values(groups).map(g => {
+      const seen = new Set(); const samples = [];
+      g.layers.forEach(l => pointsInsideDU(l).forEach(f => {
+        const id = f.properties.id;
+        if(seen.has(id)) return; seen.add(id); samples.push(f);
+      }));
+      const byAnalyte = analyteStatsFor(samples);
+      const stats = { byAnalyte };
+      return {
+        scenario: g.scenario, eu: g.eu,
+        duNames: g.layers.map(l => l.duMeta.name).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})),
+        n: samples.length, byAnalyte,
+        calls: activeStandards().map(s => duCallVsStandard(stats, s)),
+      };
+    }).sort((a,b) => (a.scenario+a.eu).localeCompare(b.scenario+b.eu));
+  }
+  function renderEuTableHtml(){
+    const rows = euRowsForAllScenarios();
+    if(!rows.length){
+      return `<p class="hint" style="margin-top:8px"><b>Exposure Units:</b> assign two or more DUs to the same EU group (Edit DU → EU group) and a pooled EU-level UCL table appears here — samples are merged across the member DUs (deduped), which is how formal compliance is judged.</p>`;
+    }
+    const body = rows.map(r => {
+      const hg = r.byAnalyte.Hg || {};
+      const badges = r.calls.map(c => `<span class="${c.cls}" style="font-size:8.5px" title="${c.label}">${c.tag}:${c.call}${c.call==='ACT'&&c.driver?' '+c.driver:''}</span>`).join(' ');
+      return `<tr>
+        <td style="text-align:left">${r.scenario}</td>
+        <td style="text-align:left"><b>${r.eu}</b></td>
+        <td style="text-align:left">${r.duNames.join(', ')}</td>
+        <td>${r.n}</td>
+        <td>${hg.hasResult && !hg.allND ? fmt(hg.mean,1) : '—'}</td>
+        <td>${hg.hasResult && hg.uclC!=null ? fmt(hg.uclC,1) : '—'}</td>
+        <td>${badges}</td>
+      </tr>`;
+    }).join('');
+    return `<label class="field" style="margin-top:10px">Exposure Units (pooled across member DUs)</label>
+      <table class="du-compare-table"><thead><tr>
+        <th>Scenario</th><th>EU</th><th>Member DUs</th><th>n (unique)</th><th>Hg mean</th><th>Hg UCL-C</th><th>Call</th>
+      </tr></thead><tbody>${body}</tbody></table>
+      <p class="hint">Samples are pooled across the EU's member DUs and deduplicated by sample ID before the UCL — a screening stand-in for the per-EU ProUCL run.</p>`;
   }
   function compareToDelim(sep){
     const rows = compareTableRows();
     // Export always includes BOTH pass-count columns regardless of UI selection,
     // so the recipient has the full picture for FS / mini-FS write-ups.
+    const costsOn = hasCosts();
     const headers = ['Scenario','# DUs','Acres total','Acres disturbed','Disturbed vol (yd3)',
       'Hg removed (kg)','Hg stabilized (kg)','Residual mean Hg (mg/kg)',
+      'Permanent (ac)','Permanent (%)',
+      'Capital cost ($)','O&M cost ($)','Total cost ($)','O&M years',
       'PASS vs ROD (204)','PASS vs Background (58)',
       ...DU_ACTIONS.map(a => `Ac: ${a.key}`),
       'Issues'];
@@ -4639,6 +4837,12 @@ function fitToData(){
         Math.round(r.volumeDisturbed_yd3),
         r.HgMassRemoved_kg.toFixed(3), r.HgMassStabilized_kg.toFixed(3),
         r.residualMeanHg!=null ? r.residualMeanHg.toFixed(2) : '',
+        r.acresPermanent.toFixed(3),
+        r.pctPermanent!=null ? r.pctPermanent.toFixed(0) : '',
+        costsOn ? Math.round(r.costCapital) : '',
+        costsOn ? Math.round(r.costOM) : '',
+        costsOn ? Math.round(r.costTotal) : '',
+        costsOn ? r.omYears : '',
         `${r.passROD}/${r.nDUs}`, `${r.passPMB}/${r.nDUs}`,
         ...DU_ACTIONS.map(a => (r.acresByAction[a.key]||0).toFixed(3)),
         r.issues.join('; '),
@@ -4662,7 +4866,7 @@ function fitToData(){
   }
   function perDuStatsToDelim(sep){
     const headers = [
-      'Scenario','DU','Action','Depth (ft)','Depth mode','Area (ac)','Volume (yd3)',
+      'Scenario','DU','EU group','Action','Permanent remedy','Depth (ft)','Depth mode','Area (ac)','Volume (yd3)',
       'Bulk density (kg/m3)','Hg mass (kg)',
       'n total','n R1','n R2','n EA',
       'ROD call','ROD driver','Background call','Background driver',
@@ -4679,9 +4883,12 @@ function fitToData(){
       const rod = duCallVsStandard(stats, 'ROD');
       const pmb = duCallVsStandard(stats, 'PMB');
       const db = stats.datasetBreakdown;
+      const actDef = DU_ACTION_LOOKUP[m.action] || DU_ACTION_LOOKUP.Undecided;
       const row = [
         scenName[m.scenarioId] || m.scenarioId, m.name,
-        (DU_ACTION_LOOKUP[m.action]||DU_ACTION_LOOKUP.Undecided).label,
+        m.euGroup || '',
+        actDef.label,
+        actDef.permanent ? 'yes' : 'no',
         m.depthFt, m.depthMode || 'manual',
         stats.area_ac.toFixed(4), Math.round(stats.volume_yd3),
         stats.bulkDensity, stats.HgMass_kg.toFixed(3),
@@ -4712,27 +4919,31 @@ function fitToData(){
   }
 
   // ---- hot-spot DU generator ---------------------------------------------
-  function generateHotspotDUs(){
-    const thr   = parseFloat(document.getElementById('duHotspotThr').value);
-    const minM2 = parseFloat(document.getElementById('duHotspotMinArea').value) || 50;
-    if(!(thr > 0)){ toast('Enter a positive Hg threshold.'); return; }
+  // Core generator (no UI reads, no undo bookkeeping) — IDW-contours Hg at thr,
+  // converts each contour piece into a DU in the ACTIVE scenario. Returns
+  // { created, skipped, layers } so callers (the Hot-spot button and the preset
+  // builder) can toast / snapshot / post-process as they see fit.
+  function runHotspotGeneration(thr, minM2, opts){
+    opts = opts || {};
+    const action = opts.action || 'HandExcavate';
+    const namePrefix = opts.namePrefix || `Hotspot ≥${thr}`;
     const samples = DATA.features.filter(f => f.properties.sampled && typeof f.properties.Hg === 'number');
-    if(samples.length < 3){ toast('Not enough sampled Hg data.'); return; }
+    if(samples.length < 3){ toast('Not enough sampled Hg data.'); return { created:0, skipped:0, layers:[] }; }
     const exceed = samples.filter(f => f.properties.Hg >= thr);
-    if(!exceed.length){ toast(`No samples ≥ ${thr} mg/kg Hg.`); return; }
-    const undoSnap = window.duSnapshot ? window.duSnapshot() : null;   // committed below only if DUs were created
+    if(!exceed.length){ toast(`No samples ≥ ${thr} mg/kg Hg.`); return { created:0, skipped:0, layers:[] }; }
     const fc = turf.featureCollection(samples.map(f => turf.point(f.geometry.coordinates, { v: f.properties.Hg })));
     let grid, bands;
     try { grid  = turf.interpolate(fc, 8, { gridType:'point', property:'v', units:'meters', weight:2.5 }); }
-    catch(e){ toast('Interpolation failed: ' + e.message, 4200); return; }
+    catch(e){ toast('Interpolation failed: ' + e.message, 4200); return { created:0, skipped:0, layers:[] }; }
     try { bands = turf.isobands(grid, [thr, 1e12], { zProperty:'v' }); }
-    catch(e){ toast('Contouring failed: ' + e.message, 4200); return; }
+    catch(e){ toast('Contouring failed: ' + e.message, 4200); return { created:0, skipped:0, layers:[] }; }
     let mask = null;
     exceed.forEach(f => {
       const b = turf.buffer(turf.point(f.geometry.coordinates), 20, { units:'meters' });
       try { mask = mask ? turf.union(mask, b) : b; } catch(e){ if(!mask) mask = b; }
     });
     let created = 0, skipped = 0;
+    const layers = [];
     bands.features.forEach(bf => {
       if(!bf.geometry) return;
       turf.flatten(bf).features.forEach(band => {
@@ -4745,18 +4956,268 @@ function fitToData(){
           const layer = L.geoJSON(piece).getLayers()[0];
           drawnItems.addLayer(layer);
           const ok = promoteToDU(layer, {
-            name: `Hotspot ≥${thr}-${++created}`,
-            action: 'HandExcavate',   // depth left to auto-derive from deepest in-polygon exceedance
+            name: `${namePrefix}-${++created}`,
+            action,   // depth left to auto-derive from deepest in-polygon exceedance
           });
           if(!ok){ created--; drawnItems.removeLayer(layer); }
-          else { wireShapeEvents(layer); }
+          else { wireShapeEvents(layer); layers.push(layer); }
         });
       });
     });
-    if(created > 0 && undoSnap && window.pushUndoSnapshot) window.pushUndoSnapshot(undoSnap, 'generate hot-spot DUs');
+    return { created, skipped, layers };
+  }
+  function generateHotspotDUs(){
+    const thr   = parseFloat(document.getElementById('duHotspotThr').value);
+    const minM2 = parseFloat(document.getElementById('duHotspotMinArea').value) || 50;
+    if(!(thr > 0)){ toast('Enter a positive Hg threshold.'); return; }
+    const undoSnap = window.duSnapshot ? window.duSnapshot() : null;   // committed below only if DUs were created
+    const res = runHotspotGeneration(thr, minM2, {});
+    if(res.created > 0 && undoSnap && window.pushUndoSnapshot) window.pushUndoSnapshot(undoSnap, 'generate hot-spot DUs');
     refreshDUUI();
-    toast(`Generated ${created} hot-spot DU(s) at Hg ≥ ${thr} mg/kg in "${activeScenario().name}"` +
-          (skipped ? ` · ${skipped} skipped (overlap)` : ''), 4200);
+    if(res.created || res.skipped){
+      toast(`Generated ${res.created} hot-spot DU(s) at Hg ≥ ${thr} mg/kg in "${activeScenario().name}"` +
+            (res.skipped ? ` · ${res.skipped} skipped (overlap)` : ''), 4200);
+    }
+  }
+
+  // ---- preset scenarios ---------------------------------------------------
+  // One-click FS-style alternatives: a No-action baseline, and dig-out scenarios
+  // at 1000 / ROD / background thresholds. Each builds its own scenario with
+  // hot-spot DUs (Hand-excavate) plus a site-wide "remainder" DU set to Leave,
+  // so the compare table gets a complete, mass-balanced row. Fully undoable.
+  function siteHullPoly(){
+    const pts = DATA.features.filter(f => f.properties.sampled);
+    if(pts.length < 3) return null;
+    const hull = turf.convex(turf.featureCollection(pts.map(f => turf.point(f.geometry.coordinates))));
+    if(!hull) return null;
+    try { return turf.buffer(hull, 10, { units:'meters' }); } catch(e){ return hull; }
+  }
+  function addPresetDU(poly, name, action){
+    const layer = L.geoJSON(poly).getLayers()[0];
+    if(!layer) return false;
+    drawnItems.addLayer(layer);
+    const ok = promoteToDU(layer, { name, action });
+    if(!ok){ drawnItems.removeLayer(layer); return false; }
+    wireShapeEvents(layer);
+    return true;
+  }
+  async function buildPresetScenario(kind){
+    const rodHg = (CRITERIA.ROD || {}).Hg;
+    const pmbHg = (CRITERIA.PMB || {}).Hg;
+    const defs = {
+      noaction: { name:'No action', thr:null,
+        desc:'One site-wide DU set to <b>Leave / revegetate</b> — the do-nothing baseline row for the compare table.' },
+      dig1000:  { name:'Excavate ≥ 1000', thr:1000,
+        desc:'Hot-spot DUs (<b>Hand-excavate</b>) wherever interpolated Hg ≥ <b>1000 mg/kg</b>, plus a <b>Leave</b> DU covering the remainder.' },
+      digROD:   { name:`Excavate ≥ ROD (${rodHg})`, thr:rodHg,
+        desc:`Hot-spot DUs (<b>Hand-excavate</b>) wherever interpolated Hg ≥ <b>ROD ${rodHg} mg/kg</b>, plus a <b>Leave</b> DU covering the remainder.` },
+      digBG:    { name:`Excavate ≥ background (${pmbHg})`, thr:pmbHg,
+        desc:`Hot-spot DUs (<b>Hand-excavate</b>) wherever interpolated Hg ≥ <b>background ${pmbHg} mg/kg</b>, plus a <b>Leave</b> DU covering the remainder.` },
+    };
+    const def = defs[kind]; if(!def) return;
+    if(def.thr !== null && !isNum(def.thr)){ toast('That criterion is missing from the dataset metadata.'); return; }
+    const ok = await appConfirm(
+      `Build preset scenario "<b>${def.name}</b>"?<br><span class="hint">${def.desc} Creates a new scenario and switches to it. Undo with ↺ Oops.</span>`,
+      { title:'Preset scenario', okText:'Build' });
+    if(!ok) return;
+    const undoSnap = window.duSnapshot ? window.duSnapshot() : null;
+    let name = def.name, i = 2;
+    while(STATE.du.scenarios.some(s => s.name === name)) name = `${def.name} (${i++})`;
+    createScenario(name, true);
+    const hull = siteHullPoly();
+    let created = 0, skipped = 0;
+    if(def.thr === null){
+      if(hull && addPresetDU(hull, 'Site-wide — no action', 'Leave')) created++;
+      else if(!hull) toast('Could not build the site hull (not enough sampled points).');
+    } else {
+      const res = runHotspotGeneration(def.thr, 50, { namePrefix:`Dig ≥${def.thr}`, action:'HandExcavate' });
+      created += res.created; skipped += res.skipped;
+      if(hull){
+        // Remainder = hull minus the dig DUs (buffered 0.5 m so the overlap
+        // guard never trips on shared borders). turf can throw on degenerate
+        // geometry — a preset without a remainder DU is still usable.
+        let remainder = null;
+        try {
+          let uni = null;
+          res.layers.forEach(l => { const p = layerToPoly(l); if(p) uni = uni ? turf.union(uni, p) : p; });
+          remainder = uni ? turf.difference(hull, turf.buffer(uni, 0.5, { units:'meters' })) : hull;
+        } catch(e){ remainder = null; }
+        if(remainder && turf.area(remainder) > 100 && addPresetDU(remainder, 'Remainder — leave', 'Leave')) created++;
+      }
+    }
+    if(created > 0 && undoSnap && window.pushUndoSnapshot) window.pushUndoSnapshot(undoSnap, `preset ${name}`);
+    refreshDUUI(); refreshAllDUStyles(); scheduleAutosave();
+    toast(`Preset "${name}": ${created} DU(s) created${skipped ? ` · ${skipped} skipped (overlap)` : ''}.`, 4200);
+  }
+
+  // ---- printable DU report -------------------------------------------------
+  // Opens a print-ready window: scenario compare table, per-scenario DU tables
+  // with basis footnotes, EU pooling, unit costs, and the methodology block.
+  // Optionally embeds a map snapshot (best-effort — tile CORS can block it).
+  function escHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function reportCallSpan(c){
+    const cls = c.call==='PASS' ? 'pass' : c.call==='ACT' ? 'act' : 'tbd';
+    const drv = (c.call==='ACT' && c.driver) ? ` (${c.driver})` : '';
+    return `<span class="${cls}" title="${escHtml(c.label)}">${c.tag}: ${c.call}${drv}</span>`;
+  }
+  function buildReportHtml(){
+    const today = new Date().toLocaleDateString(undefined, { year:'numeric', month:'long', day:'numeric' });
+    const rodHg = (CRITERIA.ROD||{}).Hg, pmbHg = (CRITERIA.PMB||{}).Hg;
+    const stds = activeStandards();
+    const costsOn = hasCosts();
+    const c = STATE.du.costs || {};
+    const omY = c.omYears > 0 ? c.omYears : 30;
+
+    // -- scenario compare table (always both standards in the report) --
+    const rows = compareTableRows();
+    const cmpHead = ['Scenario','# DUs','Acres','Disturbed (ac)','Disturbed vol (yd³)','Hg removed (kg)','Hg stabilized (kg)','Residual mean Hg','Permanent (ac)']
+      .concat(costsOn ? ['Capital',`O&M (${omY} yr)`,'Total'] : [])
+      .concat(['PASS vs ROD','PASS vs BG','Issues']);
+    const cmpBody = rows.map(r => `<tr>
+      <td>${escHtml(r.name)}</td><td>${r.nDUs}</td>
+      <td>${r.acresTotal.toFixed(2)}</td><td>${r.acresDisturbed.toFixed(2)}</td>
+      <td>${fmtInt(r.volumeDisturbed_yd3)}</td>
+      <td>${r.HgMassRemoved_kg.toFixed(1)}</td><td>${r.HgMassStabilized_kg.toFixed(1)}</td>
+      <td>${r.residualMeanHg!=null ? r.residualMeanHg.toFixed(1) : '—'}</td>
+      <td>${r.acresPermanent.toFixed(2)}${r.pctPermanent!=null ? ` (${Math.round(r.pctPermanent)}%)` : ''}</td>
+      ${costsOn ? `<td>${fmtMoney(r.costCapital)}</td><td>${fmtMoney(r.costOM)}</td><td><b>${fmtMoney(r.costTotal)}</b></td>` : ''}
+      <td>${r.passROD}/${r.nDUs}</td><td>${r.passPMB}/${r.nDUs}</td>
+      <td>${r.issues.length ? '⚠ ' + escHtml(r.issues.join('; ')) : '—'}</td>
+    </tr>`).join('');
+
+    // -- per-scenario DU detail --
+    let scenSections = '';
+    STATE.du.scenarios.forEach(sc => {
+      const dus = []; eachDU(l => { if(l.duMeta.scenarioId === sc.id) dus.push(l); });
+      if(!dus.length) return;
+      dus.sort((a,b) => a.duMeta.name.localeCompare(b.duMeta.name, undefined, { numeric:true }));
+      const duRows = dus.map(l => {
+        const m = l.duMeta, stats = duStats(l);
+        const act = DU_ACTION_LOOKUP[m.action] || DU_ACTION_LOOKUP.Undecided;
+        const hg = stats.byAnalyte.Hg || {};
+        const as = stats.byAnalyte.As || {};
+        const calls = [duCallVsStandard(stats,'ROD'), duCallVsStandard(stats,'PMB')];
+        const cost = duCostForDU(l);
+        const hgCell = (hg.hasResult && !hg.allND)
+          ? `${fmt(hg.mean,0)} / ${fmt(hg.max,0)} / ${hg.uclC!=null?fmt(hg.uclC,0):'—'}` : (hg.hasResult ? 'all ND' : '—');
+        const asCell = (as.hasResult && !as.allND)
+          ? `${fmt(as.mean,1)} / ${fmt(as.max,1)} / ${as.uclC!=null?fmt(as.uclC,1):'—'}` : (as.hasResult ? 'all ND' : '—');
+        return `<tr>
+          <td>${escHtml(m.name)}</td>
+          <td>${escHtml(m.euGroup || '—')}</td>
+          <td>${escHtml(act.label)}</td>
+          <td>${act.permanent ? '◆ yes' : '◇ no'}</td>
+          <td>${m.depthFt} ft${m.depthMode==='auto' ? ' ᵃ' : ''}</td>
+          <td>${stats.area_ac.toFixed(3)}</td>
+          <td>${fmtInt(stats.volume_yd3)}</td>
+          <td>${fmt(stats.HgMass_kg,1)}</td>
+          <td>${stats.n}</td>
+          <td>${hgCell}</td>
+          <td>${asCell}</td>
+          ${costsOn ? `<td>${fmtMoney(cost.capital + cost.omAnnual*omY)}</td>` : ''}
+          <td>${calls.map(reportCallSpan).join('<br>')}</td>
+        </tr>`;
+      }).join('');
+      const bases = dus.map(l => {
+        const m = l.duMeta; const notes = [];
+        if(m.depthMode==='auto' && m.depthBasis) notes.push(escHtml(m.depthBasis));
+        if(m.actionMode==='auto' && m.actionBasis) notes.push(escHtml(m.actionBasis));
+        if(m.notes) notes.push('Notes: ' + escHtml(m.notes));
+        return notes.length ? `<div class="basis"><b>${escHtml(m.name)}</b> — ${notes.join(' · ')}</div>` : '';
+      }).join('');
+      const t = scenarioTotals(sc.id);
+      scenSections += `<div class="card">
+        <h3>Scenario: ${escHtml(sc.name)} <span class="meta">— ${t.nDUs} DU(s), ${t.acresTotal.toFixed(2)} ac${costsOn ? ', total ' + fmtMoney(t.costTotal) : ''}</span></h3>
+        <table><thead><tr>
+          <th>DU</th><th>EU</th><th>Action</th><th>Permanent</th><th>Depth</th><th>Area (ac)</th><th>Vol (yd³)</th>
+          <th>Hg mass (kg)</th><th>n</th><th>Hg mean/max/UCL-C</th><th>As mean/max/UCL-C</th>${costsOn ? '<th>Cost</th>' : ''}<th>Call</th>
+        </tr></thead><tbody>${duRows}</tbody></table>
+        ${bases}
+      </div>`;
+    });
+
+    // -- EU pooling --
+    const euRows = euRowsForAllScenarios();
+    const euSection = euRows.length ? `<h2>Exposure Units (pooled)</h2>
+      <table><thead><tr><th>Scenario</th><th>EU</th><th>Member DUs</th><th>n (unique)</th><th>Hg mean</th><th>Hg UCL-C</th><th>Call</th></tr></thead>
+      <tbody>${euRows.map(r => {
+        const hg = r.byAnalyte.Hg || {};
+        return `<tr><td>${escHtml(r.scenario)}</td><td>${escHtml(r.eu)}</td><td>${escHtml(r.duNames.join(', '))}</td>
+          <td>${r.n}</td><td>${hg.hasResult&&!hg.allND?fmt(hg.mean,1):'—'}</td><td>${hg.hasResult&&hg.uclC!=null?fmt(hg.uclC,1):'—'}</td>
+          <td>${r.calls.map(reportCallSpan).join(' ')}</td></tr>`;
+      }).join('')}</tbody></table>
+      <p class="note">Samples pooled across member DUs, deduplicated by sample ID, before the UCL — a screening stand-in for the per-EU ProUCL run.</p>` : '';
+
+    // -- unit costs --
+    const costSection = costsOn ? `<h2>Unit costs (user-entered, screening/ROM)</h2>
+      <table style="width:auto"><tbody>
+        <tr><td>Excavation</td><td>${fmtMoney(c.excavationPerYd3)}/yd³</td></tr>
+        <tr><td>Off-site transport &amp; disposal</td><td>${fmtMoney(c.disposalPerYd3)}/yd³</td></tr>
+        <tr><td>On-site placement (consolidation)</td><td>${fmtMoney(c.placementPerYd3)}/yd³</td></tr>
+        <tr><td>In-place amendment</td><td>${fmtMoney(c.amendmentPerAc)}/ac</td></tr>
+        <tr><td>Revegetation / restoration</td><td>${fmtMoney(c.revegPerAc)}/ac</td></tr>
+        <tr><td>O&amp;M / monitoring (amended acres)</td><td>${fmtMoney(c.omAnnualPerAc)}/ac·yr × ${omY} yr</td></tr>
+      </tbody></table>` : '';
+
+    const stdLine = stds.length===2 ? 'both ROD and background' : (stds[0]==='PMB' ? 'background (PMB)' : 'ROD');
+    return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>ABP Decision-Unit Report</title>
+<style>
+  body{font:11px/1.5 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111;margin:26px;max-width:1060px}
+  h1{font-size:18px;margin:0 0 2px} h2{font-size:14px;margin:20px 0 6px;border-bottom:2px solid #333;padding-bottom:3px}
+  h3{font-size:12px;margin:14px 0 4px}
+  table{border-collapse:collapse;width:100%;margin:6px 0}
+  th,td{border:1px solid #999;padding:3px 6px;font-size:9.5px;text-align:right;vertical-align:top}
+  th{background:#ececec} td:first-child,th:first-child{text-align:left}
+  .meta{color:#555;font-size:10.5px;font-weight:400}
+  .pass{color:#0a7d32;font-weight:600}.act{color:#b3261e;font-weight:600}.tbd{color:#8a6d00;font-weight:600}
+  .note{font-size:9.5px;color:#555;margin:4px 0}
+  .basis{font-size:9px;color:#666;margin:2px 0}
+  .card{page-break-inside:avoid;margin-bottom:10px}
+  #mapFig img{max-width:100%;border:1px solid #999;margin:6px 0}
+  .noprint{position:fixed;top:10px;right:10px}
+  .noprint button{font-size:13px;padding:8px 16px;cursor:pointer}
+  @media print{.noprint{display:none}}
+</style></head><body>
+<div class="noprint"><button onclick="window.print()">🖨 Print / Save as PDF</button></div>
+<h1>Decision-Unit Report — Area Between Piles (ABP)</h1>
+<div class="meta">Sulphur Bank Mercury Mine Superfund Site · Generated ${today} · Active screening standard: ${stdLine}
+  · Criteria: Hg ROD = ${rodHg!=null?rodHg:'—'} mg/kg, Hg background (PMB) = ${pmbHg!=null?pmbHg:'—'} mg/kg</div>
+<div id="mapFig"></div>
+<h2>Scenario comparison</h2>
+<table><thead><tr>${cmpHead.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${cmpBody}</tbody></table>
+<p class="note">Acres disturbed = hand-excavate + excavate&amp;consolidate + amend surface. Permanent = acres where contaminated soil is removed. Residual mean Hg is area-weighted across the scenario's DUs.${costsOn ? ' Costs are screening-level (ROM) from the user-entered unit rates below.' : ''}</p>
+<h2>Decision Units by scenario</h2>
+<p class="note">ᵃ = depth auto-derived from the deepest in-DU exceedance (basis noted under each table). Hg/As columns are mean / max / Chebyshev 95% UCL in mg/kg.</p>
+${scenSections || '<p class="note">No Decision Units defined.</p>'}
+${euSection}
+${costSection}
+<h2>Methodology &amp; caveats</h2>
+<p class="note"><b>UCL method.</b> Student-t and Chebyshev 95% UCLs on raw values with ½-detection-limit substitution for non-detects. PASS/ACT calls use the Chebyshev UCL (conservative). The population is the surface interval (0–0.5 ft) — the exposure-point-concentration convention; deeper horizons drive each DU's excavation depth, not its UCL.</p>
+<p class="note"><b>Screening only.</b> These per-DU statistics are a screening aid for delineation and alternatives discussion. Formal compliance is evaluated per Exposure Unit with EPA ProUCL. Cost figures, if shown, are rough-order-of-magnitude from user-entered unit rates and are not an engineer's estimate.</p>
+<p class="note"><b>Data.</b> Criteria and results come from the embedded validated dataset (R1/R2 investigations + EA historical where enabled). Sb &amp; Tl are reported "all ND" where every in-DU result is a non-detect.</p>
+</body></html>`;
+  }
+  function openPrintableReport(){
+    let w = null;
+    try { w = window.open('', '_blank'); } catch(e){}
+    if(!w){ toast('Popup blocked — allow popups for this site to open the report.', 4200); return; }
+    w.document.open();
+    w.document.write(buildReportHtml());
+    w.document.close();
+    // best-effort map snapshot (html2canvas can fail on tile CORS — report still works)
+    if(typeof renderFigureCanvas === 'function'){
+      renderFigureCanvas().then(canvas => {
+        try {
+          const holder = w.document.getElementById('mapFig');
+          if(holder){
+            const img = w.document.createElement('img');
+            img.src = canvas.toDataURL('image/png');
+            holder.appendChild(img);
+          }
+        } catch(e){ /* window closed or blocked — fine */ }
+      }).catch(()=>{ /* snapshot unavailable — report is complete without it */ });
+    }
   }
 
   // ---- UI render ---------------------------------------------------------
@@ -4881,6 +5342,8 @@ function fitToData(){
       defaultBulkDensity: typeof savedDu.defaultBulkDensity === 'number' ? savedDu.defaultBulkDensity : def.defaultBulkDensity,
       includeEA: typeof savedDu.includeEA === 'boolean' ? savedDu.includeEA : def.includeEA,
       compareStandard: ['ROD','PMB','BOTH'].includes(savedDu.compareStandard) ? savedDu.compareStandard : def.compareStandard,
+      costs: Object.assign({}, DU_COST_DEFAULTS, def.costs || {},
+        (savedDu.costs && typeof savedDu.costs === 'object') ? savedDu.costs : {}),
     };
     if(!STATE.du.scenarios.find(s => s.id === 'unassigned')){
       STATE.du.scenarios.unshift({ id:'unassigned', name:'Unassigned', notes:'', readonly:true });
@@ -4890,6 +5353,7 @@ function fitToData(){
     const ie = document.getElementById('duIncludeEA');       if(ie) ie.checked = STATE.du.includeEA;
     const bd = document.getElementById('duBulkDensity');     if(bd) bd.value   = STATE.du.defaultBulkDensity;
     const cs = document.getElementById('duCompareStandard'); if(cs) cs.value   = STATE.du.compareStandard;
+    if(typeof window.syncCostInputs === 'function') window.syncCostInputs();
     refreshAllDUStyles();
   };
 
@@ -4999,6 +5463,37 @@ function fitToData(){
     download(expFileName('ABP_DU_stats') + '.csv', perDuStatsToDelim(','), 'text/csv');
   });
   $du('duHotspotRun').addEventListener('click', generateHotspotDUs);
+  $du('duPresetNoAction').addEventListener('click', () => buildPresetScenario('noaction'));
+  $du('duPreset1000').addEventListener('click',     () => buildPresetScenario('dig1000'));
+  $du('duPresetROD').addEventListener('click',      () => buildPresetScenario('digROD'));
+  $du('duPresetBG').addEventListener('click',       () => buildPresetScenario('digBG'));
+  $du('duReportBtn').addEventListener('click', openPrintableReport);
+
+  // unit-cost inputs <-> STATE.du.costs (persisted with the project; not in PERSIST_CONTROLS)
+  const COST_FIELDS = {
+    duCost_excavation:'excavationPerYd3', duCost_disposal:'disposalPerYd3',
+    duCost_placement:'placementPerYd3',   duCost_amendment:'amendmentPerAc',
+    duCost_reveg:'revegPerAc',            duCost_omAnnual:'omAnnualPerAc',
+    duCost_omYears:'omYears',
+  };
+  function syncCostInputs(){
+    const c = STATE.du.costs || {};
+    Object.entries(COST_FIELDS).forEach(([id, key]) => {
+      const el = $du(id); if(!el) return;
+      const v = c[key];
+      el.value = (typeof v === 'number' && v > 0) ? v : (key === 'omYears' ? 30 : '');
+    });
+  }
+  Object.entries(COST_FIELDS).forEach(([id, key]) => {
+    const el = $du(id); if(!el) return;
+    el.addEventListener('change', () => {
+      const v = parseFloat(el.value);
+      STATE.du.costs[key] = (isFinite(v) && v > 0) ? v : (key === 'omYears' ? 30 : 0);
+      refreshDUUI(); scheduleAutosave();
+    });
+  });
+  syncCostInputs();
+  window.syncCostInputs = syncCostInputs;
 
   // initial render
   refreshDUUI();
