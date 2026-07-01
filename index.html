@@ -1061,12 +1061,32 @@ function hasDeep(p){ return typeof p.depth === 'string' && p.depth.indexOf('Deep
    ========================================================================= */
 const map = L.map('map', {
   zoomControl:true, minZoom:11, maxZoom:21, preferCanvas:false,
-  zoomSnap:0.25, zoomDelta:0.5,                 // finer, less jumpy zoom steps
-  wheelDebounceTime:30, wheelPxPerZoomLevel:120,// smoother, more linear wheel zoom
+  zoomSnap:0.25, zoomDelta:0.5,                 // finer zoom steps (buttons/keyboard)
+  scrollWheelZoom:false,                         // replaced by a consistent custom handler (see below)
   zoomAnimation:true, fadeAnimation:true, markerZoomAnimation:true,
   inertia:true, inertiaDeceleration:2400, inertiaMaxSpeed:1800, easeLinearity:0.22,
   bounceAtZoomLimits:true
 });
+
+/* Consistent wheel zoom. Leaflet's default accumulates scroll delta and maps it
+   through a log curve, so a fast flick can jump ~4 zoom levels while a slow
+   scroll is smooth — the "sometimes fine, sometimes way too far" behavior.
+   Instead: a fixed small step per notch, toward the cursor, throttled so rapid
+   high-resolution wheel/trackpad events coalesce into one controlled step. */
+(function(){
+  const STEP = 0.5, THROTTLE = 45; let last = 0;
+  map.getContainer().addEventListener('wheel', function(e){
+    e.preventDefault();
+    const now = Date.now();
+    if(now - last < THROTTLE) return;            // coalesce rapid events
+    last = now;
+    if(!e.deltaY) return;
+    const target = map._limitZoom(map.getZoom() + (e.deltaY < 0 ? STEP : -STEP));
+    if(target === map.getZoom()) return;
+    const pt = map.mouseEventToContainerPoint(e);
+    map.setZoomAround(map.containerPointToLatLng(pt), target, { animate:true });
+  }, { passive:false });
+})();
 
 const bases = {
   imagery: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
