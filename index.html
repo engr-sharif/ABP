@@ -227,22 +227,37 @@ select:focus,input[type=text]:focus,input[type=number]:focus{border-color:var(--
 .sample-label.leaflet-tooltip-left:before,.sample-label.leaflet-tooltip-right:before{display:none}
 
 /* Popups */
-.leaflet-popup-content{margin:10px 12px;max-height:380px;overflow:auto}
+.leaflet-popup-content{margin:0;max-height:460px;overflow:auto}
 .popup{font-size:12px;line-height:1.45}
-.popup h4{margin:0 0 5px;font-size:13px;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
-.popup table{border-collapse:collapse;width:100%;margin:4px 0}
-.popup td{padding:1px 5px 1px 0;vertical-align:top}
 .popup td.k{color:var(--muted);white-space:nowrap}
 .popup .exc-yes{color:var(--red);font-weight:700}
 .popup .exc-no{color:var(--green);font-weight:700}
 .popup .exc-ns{color:var(--gray);font-weight:700}
-.popup .copybtn{margin-top:6px;font-size:11px;padding:3px 7px}
+.popup .copybtn{margin-top:8px;font-size:11px;padding:3px 8px}
 
-/* Boring-log popup */
+/* Sample popup (boring-log) — redesigned header + tri-color data */
+.popup-bl{min-width:340px}
+.popup-bl .pbl-head{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:11px 14px 7px}
+.popup-bl .pbl-id{font-size:16px;font-weight:700;letter-spacing:.2px}
+.popup-bl .pbl-round{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+  color:var(--muted);background:rgba(127,127,127,.16);padding:1px 6px;border-radius:8px}
+.popup-bl .pbl-pill{font-size:11px;font-weight:700;padding:2px 9px;border-radius:11px;color:#fff}
+.popup-bl .pbl-pill.over{background:#d7191c}
+.popup-bl .pbl-pill.ok{background:#1a9641}
+.popup-bl .pbl-pill.ns{background:#9e9e9e}
+.popup-bl .pbl-pill.hi{color:#1f2933;border:1px solid rgba(0,0,0,.25)}
+body.dark .popup-bl .pbl-pill.hi{color:#0e1217}
 .popup-bl .bl-tag{font-weight:400;color:var(--muted);font-size:11px}
-.popup-bl .hi-badge{font-weight:700;font-size:11px;color:#1f2933;padding:1px 7px;border-radius:10px;border:1px solid rgba(0,0,0,.25);margin-left:4px}
-.popup-bl .bl-table .nd{color:var(--muted);font-style:italic}
-.popup-bl .bl-table .ql{display:inline-block;font-size:9px;font-weight:700;padding:0 3px;border-radius:2px;background:rgba(127,127,127,.18);color:var(--ink);vertical-align:1px}
+.popup-bl .bl-meta{font-size:10.5px;color:var(--muted);padding:0 14px 6px}
+.popup-bl .pbl-val{color:#1a7f37;font-weight:700}
+.popup-bl .pbl-status{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 14px 8px;padding:6px 10px;
+  background:rgba(127,127,127,.08);border-radius:6px;font-size:11px}
+.popup-bl .pbl-status .pbl-std{color:var(--muted);margin-right:4px}
+.popup-bl .pbl-status .pbl-drv{color:var(--muted)}
+.popup-bl .pbl-omnote{flex-basis:100%;font-size:9.5px;color:#d68a1a;font-style:italic}
+.popup-bl .lv-over{color:#d7191c}
+.popup-bl .lv-bg{color:#d68a1a}
+.popup-bl .lv-ok{color:#1a9641}
 
 /* DU edit modal — replaces native prompt() chain for multi-field edits */
 .du-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:5000;
@@ -282,19 +297,29 @@ body.dark .du-depth-mode.manual{color:#e2c075}
 .leaflet-popup.du-popup .leaflet-popup-content{max-height:none !important;margin:10px 14px;line-height:1.35}
 .du-pop-head{font-size:11px;color:var(--muted);padding-bottom:4px;border-bottom:1px solid var(--line);margin-bottom:4px}
 .du-pop-head b{color:var(--ink)}
-body.dark .popup-bl .hi-badge{color:#0e1217}
-.popup-bl .bl-chart-wrap{margin-top:8px;border-top:1px solid var(--line);padding-top:6px}
-.popup-bl .bl-depth-chart{width:100% !important;max-width:380px;height:150px !important;display:block}
-.popup-bl .bl-meta{font-size:10.5px;color:var(--muted);margin:2px 0 6px}
-.popup-bl .bl-notes{font-size:11px;color:var(--muted);margin-top:6px;border-top:1px solid var(--line);padding-top:4px}
-.popup-bl .bl-wrap{display:flex;gap:10px;align-items:flex-start;margin-top:4px}
+.popup-bl .bl-chart-wrap{margin:8px 14px 0;border-top:1px solid var(--line);padding-top:8px}
+.popup-bl .bl-depth-chart{width:100% !important;max-width:400px;height:150px !important;display:block}
+.popup-bl .bl-notes{font-size:11px;color:var(--muted);margin:8px 14px 0;border-top:1px solid var(--line);padding-top:6px}
+.popup-bl .copybtn{margin:8px 14px 12px}
+.popup-bl .bl-wrap{display:flex;gap:10px;align-items:flex-start;padding:0 14px}
 .popup-bl .bl-svg{flex:none}
 .popup-bl .bl-table{font-size:11px;border-collapse:collapse;flex:1;font-variant-numeric:tabular-nums}
-.popup-bl .bl-table th,.popup-bl .bl-table td{padding:2px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.popup-bl .bl-table th,.popup-bl .bl-table td{padding:3px 5px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
 .popup-bl .bl-table th{background:rgba(127,127,127,.08);font-weight:600;color:var(--muted)}
-.popup-bl .bl-table td.lbl,.popup-bl .bl-table th.lbl{text-align:left}
-.popup-bl .bl-table td.over{color:var(--red);font-weight:700}
-.popup-bl .bl-table td.flag{text-align:center;padding-left:4px}
+.popup-bl .bl-table td.lbl,.popup-bl .bl-table th.lbl{text-align:left;max-width:120px;white-space:normal}
+.popup-bl .bl-table .lnote{color:var(--muted);font-weight:400}
+.popup-bl .bl-table td.lv-over{color:#d7191c;font-weight:700}
+.popup-bl .bl-table td.lv-bg{color:#d68a1a;font-weight:700}
+.popup-bl .bl-table td.lv-ok{color:var(--ink)}
+.popup-bl .bl-table td.nd{color:var(--muted);font-style:italic}
+.popup-bl .bl-table td.na{color:var(--muted)}
+.popup-bl .bl-table .ql{font-size:8px;font-weight:700;color:var(--muted);margin-left:1px}
+.popup-bl .bl-table td.lvdot{padding-left:4px;text-align:center}
+.popup-bl .bl-table .thr-body td{color:var(--muted);font-size:10px;border-bottom:none;padding-top:4px}
+.popup-bl .bl-table .thr-body tr:first-child td{border-top:2px solid var(--line)}
+.popup-bl .lvd{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:-1px}
+.popup-bl .pbl-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:9.5px;color:var(--muted);padding:6px 14px 0}
+.popup-bl .pbl-legend span{display:inline-flex;align-items:center;gap:3px}
 
 /* North arrow (Leaflet control, stacks under zoom at top-left) */
 .na-ctrl{width:42px;height:auto;background:var(--overlay);border:1px solid var(--line);border-radius:6px;
@@ -1320,6 +1345,50 @@ function sampleLayers(p){
   return layers;
 }
 // Render an SVG mini boring-log: OM humus above grade, soil intervals scaled to feet, coloured by ROD exceedance.
+// Tri-level classification of a value: 'over' (> ROD), 'bg' (> background/PMB
+// but <= ROD), 'ok' (<= background), or null (not numeric).
+const LEVEL_COLOR = { over:'#d7191c', bg:'#f5a733', ok:'#1a9641', nd:'#9e9e9e', ns:'#bdbdbd' };
+function analyteLevel(a, v){
+  if(!isNum(v)) return null;
+  const rod=CRITERIA.ROD[a], pmb=(CRITERIA.PMB||{})[a];
+  if(isNum(rod) && v>rod) return 'over';
+  if(isNum(pmb) && v>pmb) return 'bg';
+  return 'ok';
+}
+// Worst level across the analytes present in a layer.
+function layerLevel(l){
+  if(!l.values || !ANALYTES.some(a=>isNum(l.values[a]))) return 'ns';
+  let worst='ok';
+  ANALYTES.forEach(a=>{
+    const lv=analyteLevel(a, l.values[a]);
+    if(lv==='over') worst='over';
+    else if(lv==='bg' && worst!=='over') worst='bg';
+  });
+  return worst;
+}
+// Which analytes push the sample over ROD vs over background. The headline
+// verdict uses the SOIL horizons only (the compliance intervals) — consistent
+// with rod_exceed and the DU analysis. The OM (organic-material) layer is tracked
+// separately (its cell/block are still colored by level so elevation is visible).
+function sampleExceedSummary(p){
+  const layers=sampleLayers(p);
+  const rod=new Set(), bg=new Set(); let anySampled=false, omOver=false, omBg=false;
+  layers.forEach(l=>{
+    if(!l.values) return;
+    if(l.kind==='OM'){
+      ANALYTES.forEach(a=>{ const lv=analyteLevel(a,l.values[a]); if(lv==='over') omOver=true; else if(lv==='bg') omBg=true; });
+      return;
+    }
+    ANALYTES.forEach(a=>{
+      const v=l.values[a]; if(!isNum(v)) return; anySampled=true;
+      const lv=analyteLevel(a,v);
+      if(lv==='over') rod.add(a);
+      else if(lv==='bg') bg.add(a);
+    });
+  });
+  const bgOver=new Set([...rod, ...bg]);   // over background = over ROD union over-PMB-only
+  return { anySampled, rod:[...rod], bgOnly:[...bg], bgOver:[...bgOver], omOver, omBg };
+}
 function boringLogSvg(layers){
   const W = 72, totalH = 150;
   const omLayers = layers.filter(l=>l.kind==='OM'), soilLayers = layers.filter(l=>l.kind==='soil');
@@ -1328,11 +1397,9 @@ function boringLogSvg(layers){
   const soilH = totalH - omH - ground;
   const soilY0 = omH + ground;
   const ftPx = soilH / maxBot;
-  function fill(l){
-    if(l.kind==='OM') return l.exceed ? '#8c5a25' : '#c2a878';                   // humus brown
-    if(!l.values || !ANALYTES.some(a=>isNum(l.values[a]))) return '#bdbdbd';      // not sampled
-    return l.exceed ? '#d7191c' : '#3a8c40';
-  }
+  // Tri-color: red over ROD, amber over background (under ROD), green at/below
+  // background, gray not-sampled. OM keeps a humus-brown border to stay identifiable.
+  function fill(l){ return LEVEL_COLOR[layerLevel(l)] || LEVEL_COLOR.ns; }
   let svg = `<svg width="${W}" height="${totalH}" viewBox="0 0 ${W} ${totalH}" style="display:block">`;
   // ft grid + tick labels
   for(let f=0; f<=maxBot+0.001; f+=0.5){
@@ -1364,18 +1431,35 @@ function boringLogSvg(layers){
 function popupHtml(p){
   const fmt = v => isNum(v) ? v.toLocaleString() : '—';
   const layers = sampleLayers(p);
-  const overall = p.rod_exceed==='YES' ? `<span class="exc-yes">⚠ Exceeds ROD</span>`
-                 : p.rod_exceed==='NO' ? `<span class="exc-no">Below ROD</span>`
-                 : `<span class="exc-ns">${p.rod_exceed||'Not sampled'}</span>`;
-  // Hazard Index summary (combined ROD-ratio across the 4 analytes)
   const hi = hazardIndex(p);
-  const hiBadge = isNum(hi) ? (() => {
-    const band = hiBand(hi);
-    const driverTxt = hiContributions(p).slice(0,2).map(c=>`${c.a} ${c.pct.toFixed(0)}%`).join(', ');
-    return `<span class="hi-badge" style="background:${HI_COLOR[band]}">HI ${hi.toFixed(2)}</span>`
-         + (driverTxt?` <span class="bl-tag">${driverTxt}</span>`:'');
-  })() : '';
-  // soil layers with at least 2 numeric depth points -> include depth chart
+  const hiBadge = isNum(hi)
+    ? `<span class="pbl-pill hi" style="background:${HI_COLOR[hiBand(hi)]}">HI ${hi.toFixed(2)}</span>` : '';
+
+  // ---- header: ID · round badge · ROD verdict pill · HI pill ----
+  const exc = sampleExceedSummary(p);
+  const rodPill = !p.sampled ? `<span class="pbl-pill ns">Not sampled</span>`
+    : exc.rod.length ? `<span class="pbl-pill over">⚠ Exceeds ROD</span>`
+    : `<span class="pbl-pill ok">✓ Below ROD</span>`;
+  const roundTag = `<span class="pbl-round">${datasetLabel(p)}</span>`;
+
+  // ---- dual-standard status bar (vs ROD, vs Background) ----
+  let statusBar = '';
+  if(p.sampled && exc.anySampled){
+    const rodTxt = exc.rod.length
+      ? `<b class="lv-over">⚠ Exceeds</b> <span class="pbl-drv">${exc.rod.join(', ')}</span>`
+      : `<b class="lv-ok">✓ Below</b>`;
+    const bgTxt = exc.bgOver.length
+      ? `<b class="lv-bg">⚠ Over</b> <span class="pbl-drv">${exc.bgOver.join(', ')}</span>`
+      : `<b class="lv-ok">✓ At / below</b>`;
+    const omNote = exc.omOver ? `<div class="pbl-omnote">OM (organic layer) exceeds ROD — tracked separately from the soil verdict</div>` : '';
+    statusBar = `<div class="pbl-status">
+      <div><span class="pbl-std">vs ROD (${CRITERIA.ROD.Hg})</span> ${rodTxt}</div>
+      <div><span class="pbl-std">vs Background (${(CRITERIA.PMB||{}).Hg||58})</span> ${bgTxt}</div>
+      ${omNote}
+    </div>`;
+  }
+
+  // ---- data table with tri-color cells + threshold reference rows ----
   const soilLayers = layers.filter(l=>l.kind==='soil' && l.values && ANALYTES.some(a=>isNum(l.values[a])));
   const showChart = soilLayers.length >= 2;
   let body;
@@ -1386,55 +1470,77 @@ function popupHtml(p){
         const dl = l.dls && l.dls[a];
         const q  = l.quals && l.quals[a];
         if(isNum(v)){
-          const over = v > CRITERIA.ROD[a];
-          return `<td${over?' class="over"':''}>${fmt(v)}${q?` <span class="ql">${q}</span>`:''}</td>`;
+          const lv = analyteLevel(a, v);   // 'over'|'bg'|'ok'
+          const ql = q ? `<sup class="ql">${q}</sup>` : '';
+          return `<td class="lv-${lv}">${fmt(v)}${ql}</td>`;
         }
         if(isNum(dl)){
-          return `<td class="nd" title="Non-detect at reporting limit ${dl} mg/kg">&lt;${dl}${q?` <span class="ql">${q}</span>`:''}</td>`;
+          const ql = q ? `<sup class="ql">${q}</sup>` : '';
+          return `<td class="nd" title="Non-detect · reporting limit ${dl} mg/kg">&lt;${dl}${ql}</td>`;
         }
-        return '<td>—</td>';
+        return '<td class="na">—</td>';
       }).join('');
-      const flag = l.exceed
-        ? '<td class="flag exc-yes">⚠</td>'
-        : (l.values && ANALYTES.some(a=>isNum(l.values[a])) ? '<td class="flag exc-no">✓</td>' : '<td class="flag exc-ns">—</td>');
-      return `<tr><td class="lbl">${l.label}${l.note?` <span style="color:#888">· ${l.note}</span>`:''}</td>${cells}${flag}</tr>`;
+      const dot = `<td class="lvdot"><span class="lvd" style="background:${LEVEL_COLOR[layerLevel(l)]}"></span></td>`;
+      return `<tr><td class="lbl">${l.label}${l.note?` <span class="lnote">· ${l.note}</span>`:''}</td>${cells}${dot}</tr>`;
     }).join('');
+    const thrRow = (name, obj) => `<tr class="thr"><td class="lbl">${name}</td>` +
+      ANALYTES.map(a=>`<td>${isNum(obj[a])?obj[a]:'—'}</td>`).join('') + `<td></td></tr>`;
     body = `<div class="bl-wrap">
       <div class="bl-svg">${boringLogSvg(layers)}</div>
       <table class="bl-table">
         <thead><tr><th class="lbl">Layer</th><th>Hg</th><th>As</th><th>Sb</th><th>Tl</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
+        <tbody class="thr-body">
+          ${thrRow('ROD limit', CRITERIA.ROD)}
+          ${thrRow('Background', CRITERIA.PMB||{})}
+        </tbody>
       </table>
+    </div>
+    <div class="pbl-legend">
+      <span><span class="lvd" style="background:${LEVEL_COLOR.over}"></span>&gt; ROD</span>
+      <span><span class="lvd" style="background:${LEVEL_COLOR.bg}"></span>&gt; background</span>
+      <span><span class="lvd" style="background:${LEVEL_COLOR.ok}"></span>≤ background</span>
+      <span><span class="lvd" style="background:${LEVEL_COLOR.nd}"></span>non-detect</span>
     </div>`;
   } else {
     body = `<p class="hint">${p.not_sampled_reason||'Not sampled.'}</p>`;
   }
+
+  // ---- metadata strip ----
   const meta = [
-    p.sample_date  ? `<span><b>Sampled:</b> ${p.sample_date}</span>` : '',
-    p.coord_source ? `<span><b>Coord:</b> ${p.coord_source}</span>` : '',
-    p.depth        ? `<span><b>Depth field:</b> ${p.depth}</span>`  : '',
-    p.has_fd==='Yes' ? `<span><b>Field dup</b></span>`              : '',
-    p.rod_drivers  ? `<span><b>Drivers:</b> ${p.rod_drivers}</span>` : '',
-    p.validated    ? `<span style="color:#1a7f37"><b>VALIDATED</b></span>` : ''
+    p.sample_date  ? `Sampled ${p.sample_date}` : '',
+    p.coord_source ? `Coord: ${p.coord_source}` : '',
+    p.depth        ? `Field depth: ${p.depth}`  : '',
+    p.has_fd==='Yes' ? `Field dup ✓`            : '',
+    p.validated    ? `<span class="pbl-val">✓ Validated</span>` : ''
   ].filter(Boolean).join(' · ');
+
   const notes = [
-    p.field_note ? `Field note: ${p.field_note}` : '',
-    p.notes      ? `Notes: ${p.notes}` : ''
+    p.field_note ? `<b>Field note:</b> ${p.field_note}` : '',
+    p.notes      ? `<b>Notes:</b> ${p.notes}` : '',
+    p.OM_effect  ? `<b>OM:</b> ${p.OM_effect}` : ''
   ].filter(Boolean).join('<br>');
+
   const txt = [
-    `Sample ${p.id} (${datasetLabel(p)})`,
-    `Sampled: ${p.sampled?'yes':'no'}`,
-    `ROD: ${p.rod_exceed}${p.rod_drivers?` [${p.rod_drivers}]`:''}`,
+    `Sample ${p.id} (${datasetLabel(p)})`, `Sampled: ${p.sampled?'yes':'no'}`,
+    p.sample_date?`Date: ${p.sample_date}`:'',
+    `vs ROD: ${exc.rod.length?'Exceeds ['+exc.rod.join(', ')+']':'Below'}`,
+    `vs Background: ${exc.bgOver.length?'Over ['+exc.bgOver.join(', ')+']':'At/below'}`,
+    isNum(hi)?`HI: ${hi.toFixed(2)}`:'',
     ...layers.map(l=>`${l.label}: ` + ANALYTES.map(a=>`${a}=${fmt(l.values&&l.values[a])}`).join(', ')),
-    p.field_note?`Field note: ${p.field_note}`:'',
-    p.notes?`Notes: ${p.notes}`:''
+    p.field_note?`Field note: ${p.field_note}`:'', p.notes?`Notes: ${p.notes}`:''
   ].filter(Boolean).join('\n');
+
   const chartBlock = showChart
     ? `<div class="bl-chart-wrap"><canvas class="bl-depth-chart" data-id="${p.id}" width="380" height="150"></canvas></div>`
     : '';
+
   return `<div class="popup popup-bl">
-    <h4>${p.id} <span class="bl-tag">· ${datasetLabel(p)}</span> ${overall} ${hiBadge}</h4>
+    <div class="pbl-head">
+      <span class="pbl-id">${p.id}</span>${roundTag}${rodPill}${hiBadge}
+    </div>
     ${meta?`<div class="bl-meta">${meta}</div>`:''}
+    ${statusBar}
     ${body}
     ${chartBlock}
     ${notes?`<div class="bl-notes">${notes}</div>`:''}
@@ -1465,17 +1571,14 @@ function renderDepthChart(canvas){
       borderWidth:1.8, showLine:true, tension:0, fill:false
     };
   }).filter(Boolean);
-  // ROD reference points per analyte rendered as dashed vertical lines (two points per analyte at min & max depth)
+  // Reference lines: ROD (red dashed) and Background (amber dotted) for Hg — the
+  // primary driver — so the depth profile shows where it crosses each standard.
   const yMax = Math.max(...layers.map(l=>l.bot||0.5), 0.5);
-  ANALYTES.forEach(a=>{
-    const thr = CRITERIA.ROD[a];
-    if(!isNum(thr) || thr<=0) return;
-    datasets.push({
-      label:`ROD ${a} = ${thr}`, data:[{x:thr,y:0},{x:thr,y:yMax}],
-      borderColor:ANALYTE_COLOR[a]||'#444', borderWidth:1, borderDash:[3,3],
-      pointRadius:0, showLine:true, tension:0, fill:false
-    });
-  });
+  const rodHg = CRITERIA.ROD.Hg, pmbHg = (CRITERIA.PMB||{}).Hg;
+  if(isNum(rodHg)) datasets.push({ label:`ROD Hg = ${rodHg}`, data:[{x:rodHg,y:0},{x:rodHg,y:yMax}],
+    borderColor:'#d7191c', borderWidth:1.2, borderDash:[4,3], pointRadius:0, showLine:true, tension:0, fill:false });
+  if(isNum(pmbHg)) datasets.push({ label:`Background Hg = ${pmbHg}`, data:[{x:pmbHg,y:0},{x:pmbHg,y:yMax}],
+    borderColor:'#f5a733', borderWidth:1.2, borderDash:[2,3], pointRadius:0, showLine:true, tension:0, fill:false });
   if(canvas._chart) canvas._chart.destroy();
   canvas._chart = new Chart(canvas, {
     type:'scatter', data:{datasets},
@@ -1488,7 +1591,7 @@ function renderDepthChart(canvas){
             ticks:{font:{size:9}} }
       },
       plugins:{
-        legend:{position:'right', labels:{boxWidth:8, padding:4, font:{size:9}, filter:item=>!String(item.text).startsWith('ROD ')}},
+        legend:{position:'right', labels:{boxWidth:8, padding:3, font:{size:8.5}}},
         tooltip:{callbacks:{label:c=>{
           const lay=c.raw && c.raw._layer ? ' @ '+c.raw._layer : '';
           return c.dataset.label+': '+c.raw.x+' mg/kg'+lay;
