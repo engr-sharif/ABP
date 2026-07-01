@@ -211,6 +211,14 @@ select,input[type=text],input[type=number]{width:100%;padding:5px 7px;border:1px
 .btn:active{transform:translateY(1px) scale(.98);box-shadow:none}
 .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
 .btn.primary:hover{background:var(--accent-dk)}
+.btn.danger{background:#d7191c;color:#fff;border-color:#d7191c}
+.btn.danger:hover{background:#b0110f}
+/* DU name labels — plain text with a halo, drawn at each DU's center */
+.du-name-label{background:transparent;border:none;box-shadow:none;font-size:11px;font-weight:700;color:#111;
+  text-shadow:0 0 3px #fff,0 0 3px #fff,0 1px 3px #fff;pointer-events:none}
+body.dark .du-name-label{color:#fff;text-shadow:0 0 3px #000,0 0 4px #000,0 1px 4px #000}
+.du-name-label:before{display:none}
+.du-scen-summary{font-size:10.5px;color:var(--muted);margin:4px 0 2px;line-height:1.4}
 select,input[type=text],input[type=number],input[type=range]{transition:border-color .15s,box-shadow .15s}
 select:focus,input[type=text]:focus,input[type=number]:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,130,246,.25);outline:none}
 /* Subtle, elegant hover: a hint of lift + a soft halo, so you can see what
@@ -804,9 +812,22 @@ body:not(.tab-open) #coords{left:0}
       <div class="du-sub" id="duSub-units">
         <h3>Decision Units <span class="chev">▾</span></h3>
         <div class="body">
-          <button class="btn primary" id="duNewBtn" style="width:100%;margin-bottom:6px">+ New DU (draw on map)</button>
+          <div class="row" style="gap:4px;margin-bottom:6px">
+            <button class="btn primary" id="duNewBtn" style="flex:1">+ New DU (polygon)</button>
+            <button class="btn" id="duNewRect"   title="New DU — rectangle" style="flex:none;padding:6px 10px">▭</button>
+            <button class="btn" id="duNewCircle" title="New DU — circle"    style="flex:none;padding:6px 10px">◯</button>
+          </div>
           <label class="checkrow"><input type="checkbox" id="duColorByAction" checked> Color DUs by action</label>
+          <label class="checkrow"><input type="checkbox" id="duShowNames" checked> Show DU names on map</label>
           <label class="field">DUs in active scenario <span id="duCountTag" class="hint" style="font-weight:400"></span></label>
+          <div class="row" style="gap:4px;margin:2px 0 4px">
+            <input type="text" id="duSearch" placeholder="filter by name…" style="flex:2">
+            <select id="duSort" style="flex:1" title="Sort order">
+              <option value="name">A–Z</option>
+              <option value="status">Status</option>
+              <option value="area">Area</option>
+            </select>
+          </div>
           <div id="duList" style="font-size:11px;color:var(--muted)">No DUs yet — click "+ New DU" above, or draw a shape and use "Mark as DU" in its popup.</div>
         </div>
       </div>
@@ -816,13 +837,14 @@ body:not(.tab-open) #coords{left:0}
         <div class="body">
           <label class="field">Active scenario</label>
           <select id="duActiveScenario"></select>
+          <div id="duScenSummary" class="du-scen-summary"></div>
           <div class="row" style="margin-top:6px;gap:4px;flex-wrap:wrap">
             <button class="btn" id="duNewScenario" style="flex:1;min-width:60px">New</button>
             <button class="btn" id="duRenameScenario" style="flex:1;min-width:60px">Rename</button>
             <button class="btn" id="duDuplicateScenario" style="flex:1;min-width:60px">Duplicate</button>
             <button class="btn" id="duDeleteScenario" style="flex:1;min-width:60px">Delete</button>
           </div>
-          <p class="hint" style="margin-top:6px">Switching the active scenario shows only that scenario's DUs on the map. The "Unassigned" scenario always exists and holds any DU whose scenario was deleted.</p>
+          <p class="hint" style="margin-top:6px">The active scenario's DUs are solid and editable; other scenarios' DUs stay visible as dashed ghosts for context. "Unassigned" always exists and catches DUs from deleted scenarios.</p>
         </div>
       </div>
 
@@ -2195,6 +2217,25 @@ function attachShapeInfo(layer){
     $('measureOut').innerHTML = html;
   }
 }
+// Pulse a shape so the user can SEE which one a message refers to (e.g. the
+// DU an overlap check collided with), then restore its style.
+function flashLayer(l){
+  if(!l || !l.setStyle || l._flashing) return;
+  l._flashing = true;
+  const o = l.options;
+  const orig = { color:o.color, weight:o.weight, fillColor:o.fillColor, fillOpacity:o.fillOpacity, dashArray:o.dashArray, opacity:o.opacity };
+  let on=false, n=0;
+  const iv = setInterval(()=>{
+    on=!on; n++;
+    try{ l.setStyle(on ? { color:'#ff2d95', weight:5, fillOpacity:0.45, opacity:1 } : orig); }catch(e){}
+    if(n>=6){
+      clearInterval(iv); l._flashing=false;
+      try{ l.setStyle(orig); }catch(e){}
+      if(l.duMeta && typeof applyDUStyle==='function') applyDUStyle(l);
+    }
+  }, 160);
+}
+
 // Single edit-event wiring for every drawn shape. Idempotent (guards against the
 // duplicate-handler leak that the erase-protect re-add path used to cause), bumps
 // a geometry revision (invalidates the DU stats cache), and keeps the Draw-tab
@@ -2257,8 +2298,14 @@ function selectDrawnShape(layer){
   if(_editingBoundary && _editingBoundary !== layer) stopBoundaryEdit();
   _selectedShape = layer;
   renderDrawSelection();
-  // switch to the Draw tab so the controls are visible
-  if(STATE.activeTab !== 'draw' && typeof activateTab === 'function') activateTab('draw');
+  // Route by identity: a DU's home is the DU tab (list row highlighted); plain
+  // shapes go to the Draw tab. ensure=true never closes an already-open tab.
+  if(layer.duMeta){
+    if(typeof activateTab === 'function') activateTab('du', true);
+    if(typeof window.duHighlightRow === 'function') window.duHighlightRow(layer.duMeta.id);
+  } else if(STATE.activeTab !== 'draw' && typeof activateTab === 'function'){
+    activateTab('draw', true);
+  }
 }
 function clearShapeSelection(){
   stopBoundaryEdit();
@@ -2311,7 +2358,7 @@ document.getElementById('drawEditBoundary').addEventListener('click', () => {
     stopBoundaryEdit();
     try{ l.pm.enable({ allowSelfIntersection:false, snappable:true, snapDistance:18 }); _editingBoundary = l;
       document.getElementById('drawEditBoundary').textContent = '✓ Done editing'; }
-    catch(e){ alert('This shape cannot be vertex-edited.'); }
+    catch(e){ toast('This shape cannot be vertex-edited.'); }
   }
 });
 document.getElementById('drawApplyStyle').addEventListener('click', () => {
@@ -2331,13 +2378,13 @@ document.getElementById('drawSelMark').addEventListener('click', () => {
     renderDrawSelection();
   }
 });
-document.getElementById('drawSelDelete').addEventListener('click', () => {
+document.getElementById('drawSelDelete').addEventListener('click', async () => {
   const l = _selectedShape; if(!l) return;
   if(l.duMeta && typeof window.duDeleteById === 'function'){ window.duDeleteById(l.duMeta.id); clearShapeSelection(); return; }
-  if(!confirm('Delete this shape?')) return;
+  if(!(await appConfirm('Delete this shape?', { title:'Delete shape', okText:'Delete', danger:true }))) return;
   if(typeof pushUndo==='function') pushUndo('delete shape');
   drawnItems.removeLayer(l); clearShapeSelection(); scheduleAutosave();
-  if(typeof toast==='function') toast('Deleted shape');
+  toast('Deleted shape');
 });
 
 function shapesToGeoJSON(){
@@ -2381,7 +2428,7 @@ function loadShapesGeoJSON(gj){
     wireShapeEvents(layer);
   });
 }
-$('clearDraw').addEventListener('click', ()=>{
+$('clearDraw').addEventListener('click', async ()=>{
   // Protect DUs — clear only non-DU shapes; DUs must be deleted from the DU panel.
   const nonDU=[], dus=[];
   drawnItems.eachLayer(l=>{ (l.duMeta ? dus : nonDU).push(l); });
@@ -2389,8 +2436,8 @@ $('clearDraw').addEventListener('click', ()=>{
     toast(dus.length ? `${dus.length} Decision Unit(s) are protected — delete them from the Decision Units panel.` : 'No shapes to clear.');
     return;
   }
-  const msg = `Clear ${nonDU.length} shape${nonDU.length>1?'s':''}?` + (dus.length?` (${dus.length} Decision Unit${dus.length>1?'s':''} will be kept — delete those from the DU panel.)`:'');
-  if(!confirm(msg)) return;
+  const msg = `Clear ${nonDU.length} shape${nonDU.length>1?'s':''}?` + (dus.length?`<br><span class="hint">${dus.length} Decision Unit${dus.length>1?'s':''} will be kept — delete those from the DU panel.</span>`:'');
+  if(!(await appConfirm(msg, { title:'Clear shapes', okText:'Clear', danger:true }))) return;
   pushUndo(`cleared ${nonDU.length} shape${nonDU.length>1?'s':''}`);
   nonDU.forEach(l=>drawnItems.removeLayer(l));
   $('measureOut').innerHTML=''; if(typeof clearShapeSelection==='function') clearShapeSelection();
@@ -2623,11 +2670,11 @@ function exportCsv(){
 }
 function handleImport(file){
   const rd = new FileReader();
-  rd.onload = ()=>{
-    let gj; try{ gj=JSON.parse(rd.result); }catch(e){ alert('Invalid JSON file.'); return; }
+  rd.onload = async ()=>{
+    let gj; try{ gj=JSON.parse(rd.result); }catch(e){ toast('Invalid JSON file.'); return; }
     const looksData = gj.metadata || (gj.features && gj.features.some(f=>
       f.geometry && f.geometry.type==='Point' && f.properties && ('rod_exceed' in f.properties || 'Hg' in f.properties)));
-    if(looksData && confirm('This looks like sample DATA. Load it (replaces the current '+DATA.features.length+' points)?')){
+    if(looksData && (await appConfirm('This looks like sample DATA. Load it (replaces the current '+DATA.features.length+' points)?', { title:'Import data', okText:'Load' }))){
       DATA.features.length = 0; gj.features.forEach(f=>DATA.features.push(f));
       // derive the dataset key the filters/colors require — without it every
       // imported point failed passesFilter and the map went blank
@@ -2664,6 +2711,69 @@ function toast(msg, ms){
   t.textContent=msg; t.classList.add('show');
   clearTimeout(t._timer); t._timer=setTimeout(()=>t.classList.remove('show'), ms||2400);
 }
+
+/* ---- App dialogs — promise-based, styled; retire native alert/confirm/prompt.
+   appConfirm(msg) -> Promise<boolean>; appPrompt(msg,{value}) -> Promise<string|null>. */
+let _appDlgResolve=null;
+function _appModalEl(){
+  let m=document.getElementById('appModal');
+  if(m) return m;
+  m=document.createElement('div');
+  m.id='appModal'; m.className='du-modal-overlay'; m.hidden=true;
+  m.innerHTML=`<div class="du-modal" style="width:390px">
+    <div class="du-modal-head"><h3 id="appModalTitle"></h3><button id="appModalX" class="du-modal-x" aria-label="close">✕</button></div>
+    <div class="du-modal-body"><div id="appModalMsg" style="font-size:12.5px;line-height:1.55"></div>
+      <input type="text" id="appModalInput" style="margin-top:9px;display:none" autocomplete="off">
+    </div>
+    <div class="du-modal-foot"><button class="btn" id="appModalCancel">Cancel</button>
+      <button class="btn primary" id="appModalOk">OK</button></div>
+  </div>`;
+  document.body.appendChild(m);
+  const okVal=()=>{ const inp=m.querySelector('#appModalInput');
+    return inp.style.display==='none' ? true : inp.value; };
+  m.querySelector('#appModalOk').addEventListener('click', ()=>_appDlgClose(okVal()));
+  m.querySelector('#appModalCancel').addEventListener('click', ()=>_appDlgClose(null));
+  m.querySelector('#appModalX').addEventListener('click', ()=>_appDlgClose(null));
+  m.addEventListener('click', e=>{ if(e.target.id==='appModal') _appDlgClose(null); });
+  // capture-phase so Enter/Escape here win over the DU-modal / global shortcuts
+  document.addEventListener('keydown', e=>{
+    if(m.hidden) return;
+    if(e.key==='Escape'){ e.stopPropagation(); e.preventDefault(); _appDlgClose(null); }
+    else if(e.key==='Enter'){ e.stopPropagation(); e.preventDefault(); _appDlgClose(okVal()); }
+  }, true);
+  return m;
+}
+function _appDlgClose(val){
+  const m=document.getElementById('appModal'); if(m) m.hidden=true;
+  const r=_appDlgResolve; _appDlgResolve=null; if(r) r(val);
+}
+function appDialog(opts){
+  const m=_appModalEl();
+  if(_appDlgResolve) _appDlgClose(null);          // a second dialog supersedes the first
+  m.querySelector('#appModalTitle').textContent = opts.title||'Confirm';
+  m.querySelector('#appModalMsg').innerHTML = opts.message||'';
+  const inp=m.querySelector('#appModalInput');
+  const hasInput = opts.input!==undefined;
+  inp.style.display = hasInput?'':'none';
+  inp.value = hasInput?(opts.input||''):''; inp.placeholder = opts.placeholder||'';
+  const ok=m.querySelector('#appModalOk');
+  ok.textContent = opts.okText||'OK';
+  ok.classList.toggle('danger', !!opts.danger);
+  m.hidden=false;
+  setTimeout(()=>{ (hasInput?inp:ok).focus(); if(hasInput) inp.select(); }, 30);
+  return new Promise(res=>{ _appDlgResolve=res; });
+}
+async function appConfirm(message, opts){
+  opts=opts||{};
+  const r=await appDialog({ title:opts.title||'Confirm', message, okText:opts.okText||'OK', danger:opts.danger });
+  return r===true;
+}
+async function appPrompt(message, opts){
+  opts=opts||{};
+  const r=await appDialog({ title:opts.title||'Input', message, input:opts.value||'', placeholder:opts.placeholder||'', okText:opts.okText||'OK' });
+  return (typeof r==='string' && r.trim()) ? r.trim() : null;
+}
+window.appConfirm=appConfirm; window.appPrompt=appPrompt;
 
 /* ---- Undo / redo ("Oops" / "...actually") ------------------------------
    Snapshot-based over the shapes + Decision-Unit/scenario state — the layer
@@ -2809,7 +2919,7 @@ function readSaves(){
 }
 function writeSaves(obj){
   try{ localStorage.setItem(SAVES_KEY, JSON.stringify(obj)); return true; }
-  catch(e){ alert('Could not save to browser: '+e.message+'\n\nUse "Save Project" to download a durable file instead.'); return false; }
+  catch(e){ toast('Could not save to browser: '+e.message+' — use "Save Project" for a durable file.', 5200); return false; }
 }
 function saveNamedSlot(){
   const inp = document.getElementById('saveSlotName');
@@ -2819,15 +2929,15 @@ function saveNamedSlot(){
   saves[name] = { savedAt:new Date().toISOString(), data:sessionData() };
   if(writeSaves(saves)){ inp.value=''; renderSavesList(); $('sessionMsg').textContent='Saved "'+name+'" to this browser.'; }
 }
-function loadNamedSlot(name){
+async function loadNamedSlot(name){
   const saves = readSaves();
   if(!saves[name]){ $('sessionMsg').textContent='Save "'+name+'" not found.'; return; }
-  if(_dirty && !confirm('Load "'+name+'"? Unsaved changes in the current view will be replaced.')) return;
+  if(_dirty && !(await appConfirm('Load "'+name+'"? Unsaved changes in the current view will be replaced.', { title:'Load browser save', okText:'Load' }))) return;
   applySession(saves[name].data, true);
   $('sessionMsg').textContent='Loaded "'+name+'" from browser.';
 }
-function deleteNamedSlot(name){
-  if(!confirm('Delete browser save "'+name+'"? (This does not affect any downloaded project files.)')) return;
+async function deleteNamedSlot(name){
+  if(!(await appConfirm('Delete browser save "'+name+'"?<br><span class="hint">This does not affect any downloaded project files.</span>', { title:'Delete save', okText:'Delete', danger:true }))) return;
   const saves = readSaves(); delete saves[name]; writeSaves(saves); renderSavesList();
 }
 function renderSavesList(){
@@ -2866,12 +2976,12 @@ function saveProjectFile(){
 }
 function openProjectFile(file){
   const rd = new FileReader();
-  rd.onload = () => {
+  rd.onload = async () => {
     let parsed; try{ parsed = JSON.parse(rd.result); }catch(e){ $('sessionMsg').textContent='Not a valid project file: '+e.message; return; }
     // accept either a wrapped project file ({app,state}) or a bare sessionData object
     const data = (parsed && parsed.state) ? parsed.state : parsed;
     if(!data || typeof data!=='object'){ $('sessionMsg').textContent='Project file has no usable state.'; return; }
-    if(_dirty && !confirm('Open this project? Unsaved changes in the current view will be replaced.')) return;
+    if(_dirty && !(await appConfirm('Open this project? Unsaved changes in the current view will be replaced.', { title:'Open project', okText:'Open' }))) return;
     if(applySession(data, true)){
       $('sessionMsg').textContent='Project loaded'+(parsed.name?': '+parsed.name:'')+'.';
     } else {
@@ -3231,7 +3341,7 @@ async function gdOpenFromDrive(){
 }
 async function gdLoadFile(id, name){
   try{
-    if(_dirty && !confirm('Open "'+name+'" from Drive? Unsaved changes in the current view will be replaced.')) return;
+    if(_dirty && !(await appConfirm('Open "'+name+'" from Drive? Unsaved changes in the current view will be replaced.', { title:'Open from Drive', okText:'Open' }))) return;
     const r=await gdFetch(`${DRIVE_API}/files/${id}?alt=media`);
     const parsed=JSON.parse(await r.text());
     const data=(parsed && parsed.state)?parsed.state:parsed;
@@ -3452,7 +3562,7 @@ function lastLine(){
 }
 function crossSection(){
   const line=lastLine();
-  if(!line){ alert('Draw a polyline first (Draw tools), then click Profile.'); return; }
+  if(!line){ toast('Draw a polyline first (Draw tools), then click Profile.'); return; }
   const an=$('xsAnalyte').value, gj=line.toGeoJSON();
   const totalM=turf.length(gj,{units:'meters'});
   const data=[];
@@ -3463,7 +3573,7 @@ function crossSection(){
     data.push({ x:snap.properties.location, y:v, id:p.id });
   });
   data.sort((a,b)=>a.x-b.x);
-  if(!data.length){ alert('No samples within 40 m of the line.'); return; }
+  if(!data.length){ toast('No samples within 40 m of the line.'); return; }
   const thr=CRITERIA[STATE.criterion][an];
   if(xsChart) xsChart.destroy();
   xsChart=new Chart($('xsChart'),{ type:'line', data:{datasets:[
@@ -3534,6 +3644,7 @@ function fitToData(){
         notes:'(holds DUs whose scenario was deleted; cannot be deleted)', readonly:true }
     ],
     colorByAction: true,
+    showNames: true,        // permanent DU name labels on the map
     defaultBulkDensity: DEFAULT_BULK_DENSITY,
     includeEA: true,
     compareStandard: 'ROD',  // 'ROD' (Hg 204, mine-area) | 'PMB' (Hg 58, accessible/EIC-area) | 'BOTH' side-by-side
@@ -3822,13 +3933,31 @@ function fitToData(){
   // ---- DU lifecycle ------------------------------------------------------
   function applyDUStyle(layer){
     if(!isDU(layer) || !layer.setStyle) return;
-    if(STATE.du.colorByAction){
-      const a = DU_ACTION_LOOKUP[layer.duMeta.action] || DU_ACTION_LOOKUP.Undecided;
-      layer.setStyle({ color:a.color, fillColor:a.color, fillOpacity:0.35, weight:2.5, dashArray:null });
+    const a = DU_ACTION_LOOKUP[layer.duMeta.action] || DU_ACTION_LOOKUP.Undecided;
+    const activeS = isVisibleDU(layer);
+    if(activeS){
+      if(STATE.du.colorByAction){
+        layer.setStyle({ color:a.color, fillColor:a.color, fillOpacity:0.35, weight:2.5, dashArray:null, opacity:1 });
+      } else {
+        applyShapeStyle(layer);
+      }
+    } else {
+      // Other scenarios' DUs stay visible as dashed GHOSTS for context (they used
+      // to vanish entirely) — muted, non-interactive so they can't be edited or
+      // confused with the active scenario's DUs.
+      const gc = STATE.du.colorByAction ? a.color : '#8a94a3';
+      layer.setStyle({ color:gc, fillColor:gc, fillOpacity:0.06, weight:1.2, dashArray:'4,4', opacity:0.35 });
     }
-    // visibility per active scenario
     const path = layer._path;
-    if(path){ path.style.display = isVisibleDU(layer) ? '' : 'none'; }
+    if(path){ path.style.display=''; path.style.pointerEvents = activeS ? '' : 'none'; }
+    // permanent name label at the DU's center (active scenario only, toggleable)
+    const showNames = STATE.du.showNames !== false;
+    if(activeS && showNames){
+      if(!layer.getTooltip()) layer.bindTooltip(layer.duMeta.name, { permanent:true, direction:'center', className:'du-name-label' });
+      else layer.setTooltipContent(layer.duMeta.name);
+    } else if(layer.getTooltip()){
+      layer.unbindTooltip();
+    }
   }
   function refreshAllDUStyles(){ eachDU(applyDUStyle); }
 
@@ -3836,13 +3965,14 @@ function fitToData(){
     opts = opts || {};
     const poly = layerToPoly(layer);
     if(!poly){
-      alert('Only polygons, rectangles, and circles can be marked as Decision Units.');
+      toast('Only polygons, rectangles, and circles can be Decision Units.');
       return false;
     }
     const conflict = wouldOverlapActiveDU(poly, layer);
     if(conflict){
       const otherName = (conflict.duMeta && conflict.duMeta.name) || 'another DU';
-      alert(`Cannot mark as DU: this shape overlaps "${otherName}" in the active scenario.\n\nOverlapping DUs are prevented per the project decision rules. Move or resize the shape so it does not intersect any existing DU in this scenario.`);
+      toast(`Overlaps "${otherName}" — DUs in a scenario can't overlap. Move or resize the shape.`, 4200);
+      if(typeof flashLayer==='function') flashLayer(conflict);
       return false;
     }
     const n = countDUsInScenario(STATE.du.activeScenarioId) + 1;
@@ -3886,8 +4016,10 @@ function fitToData(){
   function unmarkDU(layer){
     if(!isDU(layer)) return;
     delete layer.duMeta;
+    layer._duStatsCache = null;
+    if(layer.getTooltip()) layer.unbindTooltip();      // drop the DU name label
     if(layer.setStyle) applyShapeStyle(layer);
-    if(layer._path) layer._path.style.display = '';   // restore visibility
+    if(layer._path){ layer._path.style.display=''; layer._path.style.pointerEvents=''; }
     attachShapeInfo(layer);
     refreshDUUI();
     scheduleAutosave();
@@ -3899,34 +4031,39 @@ function fitToData(){
     const conflict = wouldOverlapActiveDU(poly, layer);
     if(conflict){
       const otherName = (conflict.duMeta && conflict.duMeta.name) || 'another DU';
-      alert(`Warning: after edit, "${layer.duMeta.name}" now overlaps "${otherName}" in the active scenario. Reshape or move it back before relying on scenario totals.`);
+      toast(`"${layer.duMeta.name}" now overlaps "${otherName}" — reshape before relying on scenario totals.`, 4200);
+      if(typeof flashLayer==='function') flashLayer(conflict);
     }
     refreshDUUI();
   };
 
   // ---- scenarios ---------------------------------------------------------
-  function newScenario(){
-    const name = (prompt('New scenario name:', `Scenario ${STATE.du.scenarios.length}`) || '').trim();
-    if(!name) return;
-    if(typeof pushUndo==='function') pushUndo('new scenario');
+  // Core (no dialog) — reused by the preset generator and the UI wrapper.
+  function createScenario(name, activate){
     const id = genId('scen');
     STATE.du.scenarios.push({ id, name, notes:'' });
-    STATE.du.activeScenarioId = id;
+    if(activate !== false) STATE.du.activeScenarioId = id;
+    return id;
+  }
+  async function newScenario(){
+    const name = await appPrompt('Name for the new scenario:', { title:'New scenario', value:`Scenario ${STATE.du.scenarios.length}` });
+    if(!name) return;
+    if(typeof pushUndo==='function') pushUndo('new scenario');
+    createScenario(name);
     refreshDUUI(); refreshAllDUStyles(); scheduleAutosave();
   }
-  function renameScenario(){
+  async function renameScenario(){
     const s = activeScenario();
     if(s.readonly){ toast('The "Unassigned" scenario cannot be renamed.'); return; }
-    const name = (prompt('Rename scenario:', s.name) || '').trim();
+    const name = await appPrompt('Rename scenario:', { title:'Rename scenario', value:s.name });
     if(!name) return;
     if(typeof pushUndo==='function') pushUndo('rename scenario');
     s.name = name;
     refreshDUUI(); scheduleAutosave();
-    const out = document.getElementById('duCompareOut'); if(out && out.innerHTML) renderCompareTable();
   }
-  function duplicateScenario(){
+  async function duplicateScenario(){
     const s = activeScenario();
-    const newName = (prompt('Duplicate as:', s.name + ' (copy)') || '').trim();
+    const newName = await appPrompt('Duplicate "'+s.name+'" as:', { title:'Duplicate scenario', value:s.name + ' (copy)' });
     if(!newName) return;
     if(typeof pushUndo==='function') pushUndo('duplicate scenario');
     const newId = genId('scen');
@@ -3969,11 +4106,11 @@ function fitToData(){
     STATE.du.activeScenarioId = newId;
     refreshDUUI(); refreshAllDUStyles(); scheduleAutosave();
   }
-  function deleteScenario(){
+  async function deleteScenario(){
     const s = activeScenario();
-    if(s.readonly){ alert('The "Unassigned" scenario cannot be deleted.'); return; }
+    if(s.readonly){ toast('The "Unassigned" scenario cannot be deleted.'); return; }
     const reassigned = countDUsInScenario(s.id);
-    const ok = confirm(`Delete scenario "${s.name}"?\n\n${reassigned} DU(s) will be reassigned to "Unassigned" (you can re-organize them later).`);
+    const ok = await appConfirm(`Delete scenario "${s.name}"?<br><span class="hint">${reassigned} DU(s) will be reassigned to "Unassigned".</span>`, { title:'Delete scenario', okText:'Delete', danger:true });
     if(!ok) return;
     if(typeof pushUndo==='function') pushUndo(`delete scenario ${s.name}`);
     eachDU(l => { if(l.duMeta.scenarioId === s.id) l.duMeta.scenarioId = 'unassigned'; });
@@ -4304,10 +4441,10 @@ function fitToData(){
     if(e.key === 'Escape' && !_$('duEditModal').hidden) _closeDuModal();
     else if(e.key === 'Enter' && !_$('duEditModal').hidden && e.target.tagName !== 'TEXTAREA') _saveDuModal();
   });
-  window.duUnmark = function(duId){
+  window.duUnmark = async function(duId){
     const l = findDUById(duId); if(!l) return;
     const nm = l.duMeta.name;
-    if(!confirm(`Unmark "${nm}"? The shape stays on the map as a plain drawing but is no longer a Decision Unit (its stats/PASS-ACT call go away).`)) return;
+    if(!(await appConfirm(`Unmark "${nm}"?<br><span class="hint">The shape stays on the map as a plain drawing but is no longer a Decision Unit (its stats and PASS/ACT call go away).</span>`, { title:'Unmark DU', okText:'Unmark' }))) return;
     if(typeof pushUndo==='function') pushUndo(`unmark ${nm}`);
     unmarkDU(l);
     _closeDuModal && _closeDuModal();
@@ -4322,10 +4459,10 @@ function fitToData(){
   }
   // Delete a DU entirely — removes the shape from the map AND updates the list,
   // comparison table, and session. This is the primary "get rid of it" action.
-  function duDeleteById(duId){
+  async function duDeleteById(duId){
     const l = findDUById(duId); if(!l) return;
     const name = (l.duMeta && l.duMeta.name) || 'this DU';
-    if(!confirm(`Delete "${name}"? This removes the Decision Unit and its shape from the map. (To keep the shape but drop only its DU status, use "Unmark" inside Edit DU.)`)) return;
+    if(!(await appConfirm(`Delete "${name}"?<br><span class="hint">Removes the Decision Unit and its shape from the map. (To keep the shape, use "Unmark" inside Edit DU.)</span>`, { title:'Delete DU', okText:'Delete', danger:true }))) return;
     if(typeof pushUndo==='function') pushUndo(`delete ${name}`);
     if(l.closePopup) l.closePopup();
     drawnItems.removeLayer(l);
@@ -4342,16 +4479,26 @@ function fitToData(){
   // "+ New DU" — enter polygon draw mode; the next shape auto-promotes to a DU
   // in the active scenario and immediately opens its edit modal.
   let _pendingNewDU = false;
+  function setNewDUButton(drawing){
+    const b = document.getElementById('duNewBtn'); if(!b) return;
+    b.textContent = drawing ? '✕ Cancel drawing' : '+ New DU (polygon)';
+    b.classList.toggle('danger',  !!drawing);
+    b.classList.toggle('primary', !drawing);
+  }
   function startNewDU(shape){
     _pendingNewDU = true;
-    try { map.pm.enableDraw(shape || 'Polygon', { snappable:true, snapDistance:18 }); toast('Draw the DU boundary — Esc cancels.'); }
-    catch(e){ _pendingNewDU = false; toast('Could not start drawing: ' + e.message); }
+    try {
+      map.pm.enableDraw(shape || 'Polygon', { snappable:true, snapDistance:18 });
+      setNewDUButton(true);
+      toast('Draw the DU boundary — Esc or the Cancel button aborts.');
+    }
+    catch(e){ _pendingNewDU = false; setNewDUButton(false); toast('Could not start drawing: ' + e.message); }
   }
   window.startNewDU = startNewDU;
   // If drawing ends without a shape (Escape / toolbar cancel), drop the pending
   // flag — otherwise the NEXT ordinary polygon drawn later would silently become
   // a DU. (pm:create fires before pm:drawend, so a successful draw is unaffected.)
-  map.on('pm:drawend', () => { _pendingNewDU = false; });
+  map.on('pm:drawend', () => { _pendingNewDU = false; setNewDUButton(false); });
   // Hook the global pm:create so a shape drawn via "+ New DU" auto-promotes
   // and immediately opens its edit modal.
   window.consumePendingNewDU = function(layer){
@@ -4568,18 +4715,18 @@ function fitToData(){
   function generateHotspotDUs(){
     const thr   = parseFloat(document.getElementById('duHotspotThr').value);
     const minM2 = parseFloat(document.getElementById('duHotspotMinArea').value) || 50;
-    if(!(thr > 0)){ alert('Enter a positive Hg threshold.'); return; }
+    if(!(thr > 0)){ toast('Enter a positive Hg threshold.'); return; }
     const samples = DATA.features.filter(f => f.properties.sampled && typeof f.properties.Hg === 'number');
-    if(samples.length < 3){ alert('Not enough sampled Hg data.'); return; }
+    if(samples.length < 3){ toast('Not enough sampled Hg data.'); return; }
     const exceed = samples.filter(f => f.properties.Hg >= thr);
-    if(!exceed.length){ alert(`No samples ≥ ${thr} mg/kg Hg.`); return; }
+    if(!exceed.length){ toast(`No samples ≥ ${thr} mg/kg Hg.`); return; }
     const undoSnap = window.duSnapshot ? window.duSnapshot() : null;   // committed below only if DUs were created
     const fc = turf.featureCollection(samples.map(f => turf.point(f.geometry.coordinates, { v: f.properties.Hg })));
     let grid, bands;
     try { grid  = turf.interpolate(fc, 8, { gridType:'point', property:'v', units:'meters', weight:2.5 }); }
-    catch(e){ alert('Interpolation failed: ' + e.message); return; }
+    catch(e){ toast('Interpolation failed: ' + e.message, 4200); return; }
     try { bands = turf.isobands(grid, [thr, 1e12], { zProperty:'v' }); }
-    catch(e){ alert('Contouring failed: ' + e.message); return; }
+    catch(e){ toast('Contouring failed: ' + e.message, 4200); return; }
     let mask = null;
     exceed.forEach(f => {
       const b = turf.buffer(turf.point(f.geometry.coordinates), 20, { units:'meters' });
@@ -4613,6 +4760,17 @@ function fitToData(){
   }
 
   // ---- UI render ---------------------------------------------------------
+  // Order for the DU list: 'status' puts ACT first (worst UCL/threshold ratio on
+  // top), 'area' biggest first, default A–Z.
+  function _duSortVal(entry, mode){
+    if(mode === 'area') return -entry.stats.area_ac;
+    if(mode === 'status'){
+      const c = entry.calls[0];
+      const rank = c.call==='ACT' ? 0 : c.call==='TBD' ? 1 : 2;
+      return rank*1e6 - (c.driverUCL && c.threshold ? c.driverUCL/c.threshold : 0);
+    }
+    return null; // name — handled by localeCompare
+  }
   function refreshDUUI(){
     const sel = document.getElementById('duActiveScenario');
     if(sel){
@@ -4622,16 +4780,29 @@ function fitToData(){
     }
     const list = document.getElementById('duList');
     if(list){
-      const items = [];
+      const q = ((document.getElementById('duSearch')||{}).value||'').trim().toLowerCase();
+      const sortMode = (document.getElementById('duSort')||{}).value || 'name';
+      const selId = (window.getSelectedShape && window.getSelectedShape() && window.getSelectedShape().duMeta)
+                    ? window.getSelectedShape().duMeta.id : null;
+      const entries = [];
       eachActiveDU(l => {
-        const m = l.duMeta, stats = duStats(l), calls = duCalls(stats);
+        const m = l.duMeta;
+        if(q && !m.name.toLowerCase().includes(q)) return;
+        entries.push({ l, m, stats:duStats(l), calls:duCalls(duStats(l)) });
+      });
+      entries.sort((a,b) => {
+        const va=_duSortVal(a,sortMode), vb=_duSortVal(b,sortMode);
+        if(va!==null && vb!==null && va!==vb) return va-vb;
+        return a.m.name.localeCompare(b.m.name, undefined, {numeric:true});
+      });
+      const items = entries.map(({m, stats, calls}) => {
         const a = DU_ACTION_LOOKUP[m.action] || DU_ACTION_LOOKUP.Undecided;
         const badges = calls.map(c => {
           const drv = (c.call === 'ACT' && c.driver) ? ` ${c.driver}` : '';
           return `<span class="${c.cls}" style="font-size:8.5px" title="${c.label}">${c.tag}:${c.call}${drv}</span>`;
         }).join(' ');
         const depthTag = m.depthMode === 'auto' ? ' · auto' : '';
-        items.push(`<div class="du-list-item" data-duid="${m.id}">
+        return `<div class="du-list-item${m.id===selId?' active':''}" data-duid="${m.id}">
           <div class="du-li-main">
             <div class="du-li-title"><span class="swatch" style="background:${a.color}"></span><b>${m.name}</b> ${badges}</div>
             <div class="du-li-sub">${a.label} · n=${stats.n} · ${stats.area_ac.toFixed(2)} ac · ${m.depthFt} ft${depthTag}</div>
@@ -4641,11 +4812,12 @@ function fitToData(){
             <button class="du-li-btn" data-act="zoom"   data-duid="${m.id}" title="Zoom to DU">⌖</button>
             <button class="du-li-btn du-li-del" data-act="delete" data-duid="${m.id}" title="Delete DU">🗑</button>
           </div>
-        </div>`);
+        </div>`;
       });
       list.innerHTML = items.length
         ? items.join('')
-        : '<i>No DUs in "'+activeScenario().name+'" yet — click "+ New DU" above, or draw a shape and use "Mark as DU" in its popup.</i>';
+        : (q ? '<i>No DUs match "'+q+'".</i>'
+             : '<i>No DUs in "'+activeScenario().name+'" yet — click "+ New DU" above, or draw a shape and use "Mark as DU" in its popup.</i>');
       const ct = document.getElementById('duCountTag');
       if(ct) ct.textContent = items.length ? `(${items.length})` : '';
       // Row body (not the action buttons) zooms + opens popup.
@@ -4668,9 +4840,33 @@ function fitToData(){
     if(delBtn){ delBtn.disabled = !!sc.readonly; delBtn.style.opacity = sc.readonly?0.5:1; }
     const renBtn = document.getElementById('duRenameScenario');
     if(renBtn){ renBtn.disabled = !!sc.readonly; renBtn.style.opacity = sc.readonly?0.5:1; }
+    // live rollup: active-scenario summary line + auto-refresh of the compare table
+    const sum = document.getElementById('duScenSummary');
+    if(sum){
+      const t = scenarioTotals(STATE.du.activeScenarioId);
+      if(!t.nDUs) sum.textContent = 'No DUs in this scenario yet.';
+      else {
+        const std = activeStandards()[0];
+        const pass = std==='PMB' ? t.passPMB : t.passROD;
+        sum.innerHTML = `${t.nDUs} DU${t.nDUs>1?'s':''} · ${t.acresTotal.toFixed(2)} ac · PASS ${pass}/${t.nDUs} (${std==='PMB'?'BG':'ROD'})`
+          + (t.issues.length ? ` · <span style="color:#b35900">⚠ ${t.issues.length} issue${t.issues.length>1?'s':''}</span>` : '');
+      }
+    }
+    const out = document.getElementById('duCompareOut');
+    const sub = document.getElementById('duSub-compare');
+    if(!refreshDUUI._rendering && ((out && out.innerHTML) || (sub && !sub.classList.contains('closed')))){
+      refreshDUUI._rendering = true;
+      try{ renderCompareTable(); } finally { refreshDUUI._rendering = false; }
+    }
   }
   window.refreshDUUI = refreshDUUI;
   window.renderCompareTable = renderCompareTable;
+  // Highlight + reveal a DU's row (map click routes here via selectDrawnShape).
+  window.duHighlightRow = function(id){
+    refreshDUUI();
+    const el = document.querySelector(`#duList .du-list-item[data-duid="${id}"]`);
+    if(el){ el.classList.add('active'); el.scrollIntoView({ block:'nearest' }); }
+  };
 
   // session-merge — called by loadSession after shapes have been restored
   window.mergeDUStateFromSession = function(savedDu){
@@ -4681,6 +4877,7 @@ function fitToData(){
       activeScenarioId: savedDu.activeScenarioId || 'unassigned',
       scenarios: (Array.isArray(savedDu.scenarios) && savedDu.scenarios.length) ? savedDu.scenarios : def.scenarios,
       colorByAction: typeof savedDu.colorByAction === 'boolean' ? savedDu.colorByAction : def.colorByAction,
+      showNames: typeof savedDu.showNames === 'boolean' ? savedDu.showNames : def.showNames,
       defaultBulkDensity: typeof savedDu.defaultBulkDensity === 'number' ? savedDu.defaultBulkDensity : def.defaultBulkDensity,
       includeEA: typeof savedDu.includeEA === 'boolean' ? savedDu.includeEA : def.includeEA,
       compareStandard: ['ROD','PMB','BOTH'].includes(savedDu.compareStandard) ? savedDu.compareStandard : def.compareStandard,
@@ -4689,6 +4886,7 @@ function fitToData(){
       STATE.du.scenarios.unshift({ id:'unassigned', name:'Unassigned', notes:'', readonly:true });
     }
     const cb = document.getElementById('duColorByAction');   if(cb) cb.checked = STATE.du.colorByAction;
+    const sn = document.getElementById('duShowNames');       if(sn) sn.checked = STATE.du.showNames !== false;
     const ie = document.getElementById('duIncludeEA');       if(ie) ie.checked = STATE.du.includeEA;
     const bd = document.getElementById('duBulkDensity');     if(bd) bd.value   = STATE.du.defaultBulkDensity;
     const cs = document.getElementById('duCompareStandard'); if(cs) cs.value   = STATE.du.compareStandard;
@@ -4697,13 +4895,34 @@ function fitToData(){
 
   // ---- wiring (sub-sections, controls) -----------------------------------
   document.querySelectorAll('.du-sub > h3').forEach(h => {
-    h.addEventListener('click', () => h.parentElement.classList.toggle('closed'));
+    h.addEventListener('click', () => {
+      h.parentElement.classList.toggle('closed');
+      // the compare table is live: render it the moment its section opens
+      if(h.parentElement.id === 'duSub-compare' && !h.parentElement.classList.contains('closed')){
+        renderCompareTable();
+      }
+    });
   });
   const $du = id => document.getElementById(id);
-  $du('duNewBtn').addEventListener('click', () => startNewDU());
+  $du('duNewBtn').addEventListener('click', () => {
+    if(_pendingNewDU){    // acting as the Cancel button while drawing
+      try{ map.pm.disableDraw(); }catch(e){}
+      _pendingNewDU = false; setNewDUButton(false);
+      return;
+    }
+    startNewDU('Polygon');
+  });
+  $du('duNewRect').addEventListener('click',   () => startNewDU('Rectangle'));
+  $du('duNewCircle').addEventListener('click', () => startNewDU('Circle'));
+  $du('duSearch').addEventListener('input', () => refreshDUUI());
+  $du('duSort').addEventListener('change', () => refreshDUUI());
+  $du('duShowNames').addEventListener('change', e => {
+    STATE.du.showNames = e.target.checked;
+    refreshAllDUStyles(); scheduleAutosave();
+  });
   $du('duColorByAction').addEventListener('change', e => {
     STATE.du.colorByAction = e.target.checked;
-    if(!e.target.checked){ eachDU(applyShapeStyle); } else { refreshAllDUStyles(); }
+    refreshAllDUStyles();       // ghosts + labels are managed inside applyDUStyle either way
     scheduleAutosave();
   });
   $du('duIncludeEA').addEventListener('change', e => {
@@ -4743,7 +4962,7 @@ function fitToData(){
     const out = document.getElementById('duCompareOut'); if(out && out.innerHTML) renderCompareTable();
     scheduleAutosave();
     if(depthRecomputed > 0 || actionRecomputed > 0){
-      console.log(`[ABP] compareStandard -> ${e.target.value}: auto-depth changed on ${depthRecomputed} DU(s), auto-action changed on ${actionRecomputed} DU(s)`);
+      toast(`Standard → ${e.target.value}: re-derived depth on ${depthRecomputed} DU(s), action on ${actionRecomputed} DU(s)`, 4200);
     }
   });
   $du('duActiveScenario').addEventListener('change', e => {
@@ -4759,10 +4978,10 @@ function fitToData(){
     const tsv = compareToDelim('\t');
     if(navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(tsv).then(
-        () => alert('Comparison table copied as TSV (paste into Excel or a doc).'),
-        () => prompt('Copy failed — copy manually:', tsv)
+        () => toast('Comparison table copied as TSV — paste into Excel or a doc.'),
+        () => appPrompt('Copy failed — copy the text below manually:', { title:'Copy TSV', value:tsv })
       );
-    } else prompt('Copy manually:', tsv);
+    } else appPrompt('Copy the text below manually:', { title:'Copy TSV', value:tsv });
   });
   $du('duCompareCSV').addEventListener('click', () => {
     download(expFileName('ABP_scenarios') + '.csv', compareToDelim(','), 'text/csv');
@@ -4771,10 +4990,10 @@ function fitToData(){
     const tsv = perDuStatsToDelim('\t');
     if(navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(tsv).then(
-        () => alert('Per-DU statistics copied as TSV (paste into Excel or a doc).'),
-        () => prompt('Copy failed — copy manually:', tsv)
+        () => toast('Per-DU statistics copied as TSV — paste into Excel or a doc.'),
+        () => appPrompt('Copy failed — copy the text below manually:', { title:'Copy TSV', value:tsv })
       );
-    } else prompt('Copy manually:', tsv);
+    } else appPrompt('Copy the text below manually:', { title:'Copy TSV', value:tsv });
   });
   $du('duStatsCSV').addEventListener('click', () => {
     download(expFileName('ABP_DU_stats') + '.csv', perDuStatsToDelim(','), 'text/csv');
