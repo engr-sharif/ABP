@@ -179,6 +179,14 @@ body.dark .draw-selected{background:rgba(43,140,190,.12)}
 .du-report th:first-child,.du-report td:first-child{text-align:left}
 .du-report .over{color:#d7191c;font-weight:700}
 .du-method-note{font-size:10px;color:var(--muted);font-style:italic;margin-top:6px;line-height:1.35}
+/* glossary modal */
+.glossary{margin:0}
+.glossary dt{font-weight:700;color:var(--ink);margin-top:10px}
+.glossary dt:first-child{margin-top:0}
+.glossary dd{margin:2px 0 0 0;color:var(--muted)}
+/* nearest-samples line in sample popups */
+.pbl-near{font-size:10px;color:var(--muted);margin:3px 0 1px}
+.pbl-near b{color:var(--ink);font-weight:600}
 .du-warn{background:#fff3cd;border:1px solid #ffe69c;color:#664d03;padding:6px 8px;border-radius:4px;font-size:11px;margin:6px 0}
 .du-scenario-row{display:flex;gap:6px;align-items:center;margin:4px 0}
 .du-scenario-row input{flex:1}
@@ -497,6 +505,50 @@ body:not(.tab-open) #coords{left:0}
   </div>
 </div>
 
+<!-- Glossary / help modal -->
+<div id="helpModal" class="du-modal-overlay" hidden>
+  <div class="du-modal" style="width:640px;max-width:94vw">
+    <div class="du-modal-head">
+      <h3>Glossary — plain language</h3>
+      <button id="helpModalClose" class="du-modal-x" aria-label="close">✕</button>
+    </div>
+    <div class="du-modal-body" style="max-height:72vh;overflow-y:auto;font-size:12px;line-height:1.6">
+      <dl class="glossary">
+        <dt>Decision Unit (DU)</dt>
+        <dd>A polygon you draw around soil that will get <i>one</i> decision — leave it, amend it, or dig it out. The app pools every sample inside the polygon and asks: "if we treat this area as one unit, does it pass?"</dd>
+        <dt>Scenario</dt>
+        <dd>One complete set of DUs = one version of the cleanup plan (e.g. "dig everything over 1000" vs "dig over background"). Scenarios are compared side-by-side in the Compare table; only the active one is editable, the rest show as dashed ghosts.</dd>
+        <dt>Exposure Unit (EU)</dt>
+        <dd>The area a person (or receptor) actually moves around in — formal compliance is judged per EU, not per sample. Give several DUs the same "EU group" in Edit DU and the app pools their samples into one EU-level statistic.</dd>
+        <dt>ROD cleanup level — Hg 204 mg/kg</dt>
+        <dd>The mercury cleanup number in the Record of Decision for mine-area soil. Arsenic, antimony and thallium have their own ROD values (shown in every popup's threshold row).</dd>
+        <dt>Background / PMB — Hg 58 mg/kg</dt>
+        <dd>The natural mercury level in local soil unaffected by the mine (the PMB dataset). Areas treated as "accessible" — like near the EIC — may need to come down to background instead of the ROD level. The DU settings let you screen against either, or both at once.</dd>
+        <dt>95% UCL (Upper Confidence Limit)</dt>
+        <dd>We only sampled a handful of spots, so the true average of the whole DU is uncertain. The 95% UCL is the value we can be 95% confident the <i>true</i> average sits below. Comparing the UCL (not the plain mean) to the cleanup level protects against a "lucky draw" of low samples making a dirty area look clean.</dd>
+        <dt>Student-t vs Chebyshev UCL</dt>
+        <dd>Two recipes for the UCL. <b>Student-t</b> assumes the data are reasonably well behaved (roughly bell-shaped); <b>Chebyshev</b> makes almost no assumptions, so it comes out higher — more conservative. The app shows both but makes its PASS/ACT call with Chebyshev, since mining-waste data are skewed.</dd>
+        <dt>½ DL (non-detects)</dt>
+        <dd>When the lab can't detect a metal, the result is "&lt; detection limit." For the statistics each non-detect is counted at half its detection limit — a standard, locked-in convention here so results are reproducible.</dd>
+        <dt>PASS / ACT / TBD</dt>
+        <dd><b>PASS</b> = every analyte's Chebyshev UCL is at or below its screening level — leave-eligible. <b>ACT</b> = at least one exceeds — action indicated; the badge names the driving analyte. <b>TBD</b> = too few samples inside the DU (n &lt; 3) for a UCL.</dd>
+        <dt>Driver</dt>
+        <dd>The analyte with the highest UCL-to-threshold ratio — the one pushing the DU's call. At the ABP that's almost always mercury, occasionally arsenic.</dd>
+        <dt>HI (Hazard Index)</dt>
+        <dd>A quick "how bad overall" screen for one sample: each analyte's value divided by its ROD level, summed. HI ≤ 1 means even added together the metals sit below their limits.</dd>
+        <dt>◆ permanent / ◇ non-permanent</dt>
+        <dd>CERCLA weighs "long-term effectiveness and permanence." Digging soil out (◆) permanently removes the contamination from the DU. Leaving or amending (◇) means the mercury is still there — managed, but relying on controls and monitoring.</dd>
+        <dt>Auto depth / auto action</dt>
+        <dd>Tags marked <i>auto</i> were derived by the app — depth from the deepest exceedance among the samples inside the polygon, action from the UCL vs the active standard. Edit either and it flips to manual; the basis note says exactly which sample drove it.</dd>
+        <dt>Costs (screening / ROM)</dt>
+        <dd>Scenario costs are rough-order-of-magnitude: your unit rates × the app's areas and volumes. They rank alternatives; they are not an engineer's estimate.</dd>
+        <dt>Screening vs compliance</dt>
+        <dd>Everything here is a <b>screening aid</b> for delineation and the alternatives conversation. Formal compliance is demonstrated per Exposure Unit with EPA's ProUCL after confirmation sampling.</dd>
+      </dl>
+    </div>
+  </div>
+</div>
+
 <!-- Expanded chart modal (OM correlations etc.) -->
 <div id="chartModal" class="du-modal-overlay" hidden>
   <div class="du-modal" style="width:760px;max-width:94vw">
@@ -545,6 +597,7 @@ body:not(.tab-open) #coords{left:0}
   <span id="unvalidated" title="" style="background:#1a7f37;animation:none">R2 VALIDATED</span>
   <button id="undoBtn" class="tb-undo" title="Nothing to undo" disabled>↺ Oops</button>
   <button id="redoBtn" class="tb-undo" title="Nothing to redo" disabled>↻ …actually</button>
+  <button id="helpBtn" class="tb-undo" title="Glossary — what UCL, PASS/ACT, ROD, background, EU… mean in plain language">?</button>
   <button id="themeToggle" title="Toggle dark / light mode"
     style="background:#2b3a4d;color:#fff;border:1px solid #3a4a5c;border-radius:4px;padding:4px 9px;cursor:pointer;font-size:13px">☾</button>
 </div>
@@ -1707,6 +1760,27 @@ function popupHtml(p){
     p.OM_effect  ? `<b>OM:</b> ${p.OM_effect}` : ''
   ].filter(Boolean).join('<br>');
 
+  // ---- nearest sampled neighbors — spatial context for this location ----
+  let nearLine = '';
+  try {
+    const me = DATA.features.find(f => f.properties.id === p.id);
+    if(me && typeof turf !== 'undefined'){
+      const from = turf.point(me.geometry.coordinates);
+      const nn = DATA.features
+        .filter(f => f.properties.id !== p.id && f.properties.sampled)
+        .map(f => ({ q: f.properties, d: turf.distance(from, turf.point(f.geometry.coordinates), { units:'kilometers' }) * 3280.84 }))
+        .sort((a,b) => a.d - b.d).slice(0, 3);
+      if(nn.length){
+        nearLine = `<div class="pbl-near">Nearest samples: ` + nn.map(x => {
+          const v = x.q.Hg;
+          const hgTxt = isNum(v) ? `<span class="lv-${analyteLevel('Hg', v)}">Hg ${fmt(v)}</span>`
+                       : (isNum(x.q.Hg_dl) ? `Hg &lt;${x.q.Hg_dl}` : 'Hg —');
+          return `<b>${x.q.id}</b> ${Math.round(x.d)} ft (${hgTxt})`;
+        }).join(' · ') + `</div>`;
+      }
+    }
+  } catch(e){ /* popup renders fine without the context line */ }
+
   const txt = [
     `Sample ${p.id} (${datasetLabel(p)})`, `Sampled: ${p.sampled?'yes':'no'}`,
     p.sample_date?`Date: ${p.sample_date}`:'',
@@ -1725,6 +1799,7 @@ function popupHtml(p){
       <span class="pbl-id">${p.id}</span>${roundTag}${rodPill}${hiBadge}
     </div>
     ${meta?`<div class="bl-meta">${meta}</div>`:''}
+    ${nearLine}
     ${statusBar}
     ${body}
     ${metalsPanelHtml(p)}
@@ -2576,16 +2651,20 @@ function buildOmChart(){
 
 // ---- Expandable chart modal ----------------------------------------------
 let _modalChart = null;
-function openChartModal(params){
-  const cfg = omChartConfig(params.xField, params.xLabel, true);
+// Generic: show any Chart.js config in the expand modal (OM scatters, DU strip chart).
+function openChartModalCfg(cfg, title, hint){
   if(!cfg) return;
-  document.getElementById('chartModalTitle').textContent = params.title || 'Chart';
-  document.getElementById('chartModalHint').textContent =
-    'Move the cursor for a crosshair readout. Dashed lines: 1:1 (OM = soil), ROD 204, Background 58. Both axes are log scale. Red = OM higher than soil, blue = OM lower.';
+  wireChartExpand();   // idempotent — guarantees close/Escape work even if the Stats tab never opened
+  document.getElementById('chartModalTitle').textContent = title || 'Chart';
+  document.getElementById('chartModalHint').innerHTML = hint || '';
   document.getElementById('chartModal').hidden = false;
   if(_modalChart){ _modalChart.destroy(); _modalChart = null; }
   // build after the modal is visible so the canvas has size
   setTimeout(() => { _modalChart = new Chart(document.getElementById('chartModalCanvas'), cfg); }, 30);
+}
+function openChartModal(params){
+  openChartModalCfg(omChartConfig(params.xField, params.xLabel, true), params.title,
+    'Move the cursor for a crosshair readout. Dashed lines: 1:1 (OM = soil), ROD 204, Background 58. Both axes are log scale. Red = OM higher than soil, blue = OM lower.');
 }
 function closeChartModal(){
   document.getElementById('chartModal').hidden = true;
@@ -3199,6 +3278,11 @@ $('themeToggle').addEventListener('click', ()=>{
 // undo/redo buttons + keyboard shortcuts
 $('undoBtn').addEventListener('click', undo);
 $('redoBtn').addEventListener('click', redo);
+// glossary / help modal
+$('helpBtn').addEventListener('click', ()=>{ $('helpModal').hidden=false; });
+$('helpModalClose').addEventListener('click', ()=>{ $('helpModal').hidden=true; });
+$('helpModal').addEventListener('click', e=>{ if(e.target.id==='helpModal') $('helpModal').hidden=true; });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !$('helpModal').hidden) $('helpModal').hidden=true; });
 document.addEventListener('keydown', e=>{
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
   if(typing) return;
@@ -4264,10 +4348,72 @@ function fitToData(){
       </div>
       <div class="row" style="margin-top:6px;gap:4px;flex-wrap:wrap">
         <button class="du-mini-btn" onclick="window.duEditPrompt('${meta.id}')">✎ Edit DU…</button>
+        <button class="du-mini-btn" onclick="window.duChart('${meta.id}')" title="Strip chart: this DU's Hg vs the whole ABP, with ROD/background lines">📊 Hg chart</button>
         <button class="du-mini-btn du-li-del" onclick="window.duDeleteById('${meta.id}')">🗑 Delete</button>
       </div>
     </div>`;
   }
+
+  // ---- per-DU strip chart (in-DU Hg vs whole-ABP Hg, log scale) ----------
+  window.duChart = function(duId){
+    const l = findDUById(duId); if(!l) return;
+    if(typeof Chart === 'undefined' || typeof openChartModalCfg !== 'function'){
+      toast('Chart library unavailable (offline?).'); return;
+    }
+    const stats = duStats(l), meta = l.duMeta;
+    const hg = stats.byAnalyte.Hg || {};
+    const jit = i => ((i*9301 + 49297) % 233280) / 233280;   // deterministic — stable on redraw
+    const mk = (feats, x0) => {
+      const det = [], nd = [];
+      feats.forEach((f,i) => {
+        const q = f.properties;
+        const x = x0 + (jit(i) - 0.5) * 0.28;
+        if(isNum(q.Hg)) det.push({ x, y:q.Hg, id:q.id });
+        else if(isNum(q.Hg_dl) && q.Hg_dl > 0) nd.push({ x, y:q.Hg_dl/2, id:q.id + ' (ND, ½DL)' });
+      });
+      return { det, nd };
+    };
+    const A = mk(DATA.features.filter(f => f.properties.sampled), 0.25);
+    const D = mk(pointsInsideDU(l), 0.75);
+    const ds = [
+      { label:'All ABP (surface Hg)', data:A.det, backgroundColor:'rgba(122,136,152,.5)', pointRadius:4, pointHoverRadius:7 },
+      { label:'This DU', data:D.det, backgroundColor:'#7b3294', pointRadius:5.5, pointHoverRadius:8 },
+    ];
+    if(A.nd.length || D.nd.length){
+      ds.push({ label:'Non-detect (at ½DL)', data:[...A.nd, ...D.nd],
+        backgroundColor:'rgba(160,168,178,.35)', borderColor:'#9aa4b0', borderWidth:1,
+        pointStyle:'triangle', pointRadius:4 });
+    }
+    const rod = (CRITERIA.ROD||{}).Hg, pmb = (CRITERIA.PMB||{}).Hg;
+    if(isNum(rod)) ds.push({ label:'ROD '+rod, type:'line', data:[{x:0,y:rod},{x:1,y:rod}],
+      borderColor:'#d7191c', borderDash:[3,3], pointRadius:0, fill:false });
+    if(isNum(pmb)) ds.push({ label:'Background '+pmb, type:'line', data:[{x:0,y:pmb},{x:1,y:pmb}],
+      borderColor:'#2c7bb6', borderDash:[2,3], pointRadius:0, fill:false });
+    if(hg.uclC != null) ds.push({ label:'DU UCL-C '+Math.round(hg.uclC), type:'line',
+      data:[{x:0.58,y:hg.uclC},{x:0.92,y:hg.uclC}], borderColor:'#111', borderWidth:2.5, pointRadius:0, fill:false });
+    const cfg = { type:'scatter', data:{ datasets:ds }, options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      interaction:{ mode:'nearest', intersect:true },
+      scales:{
+        x:{ min:0, max:1, grid:{ display:false },
+            ticks:{ stepSize:0.25, autoSkip:false,
+              callback:v => v===0.25 ? 'All ABP' : v===0.75 ? meta.name : '' } },
+        y:{ type:'logarithmic', title:{ display:true, text:'Hg (mg/kg) — log scale' } },
+      },
+      plugins:{
+        legend:{ labels:{ boxWidth:12, font:{ size:11 } } },
+        crosshair:{ enabled:false },
+        tooltip:{ callbacks:{ label:c => c.raw && c.raw.id ? `${c.raw.id}: Hg ${c.raw.y}` : '' } },
+      },
+    }};
+    const call = duCall(stats);
+    const hint = `<b>${meta.name}</b> — n=${stats.n}, Hg mean ${hg.hasResult&&!hg.allND?fmt(hg.mean,0):'—'}, `
+      + `Chebyshev UCL ${hg.uclC!=null?fmt(hg.uclC,0):'—'} → <b>${call.call}</b>. `
+      + `Grey = every sampled ABP location (surface Hg); purple = samples inside this DU; triangles = non-detects at ½DL. `
+      + `The black bar is this DU's Chebyshev UCL — compare it to the dashed ROD/background lines.`;
+    if(l.closePopup) l.closePopup();
+    openChartModalCfg(cfg, 'Hg distribution — ' + meta.name, hint);
+  };
 
   // popup addendum: report card if DU, otherwise "Mark as DU" button
   window.duPopupAddendum = function(layer, info){
