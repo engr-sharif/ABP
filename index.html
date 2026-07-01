@@ -153,6 +153,11 @@ body.dark .du-li-del:hover{background:#3d1d1d;border-color:#5c2a2a;color:#ff9a9a
 body.dark .draw-selected{background:rgba(43,140,190,.12)}
 .draw-sel-head{display:flex;justify-content:space-between;align-items:center;font-size:12px}
 #drawEditBoundary{font-weight:600}
+.du-compact{font-size:11px;line-height:1.4}
+.du-compact .dc-meta{color:var(--muted);font-size:10.5px}
+.du-compact .dc-an{margin-top:4px;border-top:1px solid var(--line);padding-top:4px}
+.du-compact .dc-an > div{white-space:normal;word-break:break-word}
+.du-compact .dc-note{margin-top:5px;font-size:9.5px;color:var(--muted);font-style:italic}
 .du-pass{display:inline-block;padding:1px 8px;border-radius:3px;font-weight:700;font-size:10px;background:#1a9641;color:#fff}
 .du-act{display:inline-block;padding:1px 8px;border-radius:3px;font-weight:700;font-size:10px;background:#d7191c;color:#fff}
 .du-tbd{display:inline-block;padding:1px 8px;border-radius:3px;font-weight:700;font-size:10px;background:#9e9e9e;color:#fff}
@@ -2093,7 +2098,9 @@ function renderDrawSelection(){
   const isDU = !!l.duMeta;
   const info = shapeStats(l);
   title.innerHTML = isDU ? `<b>DU: ${l.duMeta.name}</b>` : `<b>${info.kind||'Shape'}</b>`;
-  body.innerHTML = isDU ? duReportHtmlSafe(l) : info.html;
+  // DUs get a COMPACT summary that fits the narrow panel (the full card is in the
+  // map popup); plain shapes get their measure HTML.
+  body.innerHTML = isDU ? duSummarySafe(l) : info.html;
   acts.style.display = ''; clr.style.display = '';
   document.getElementById('drawSelDuEdit').style.display = isDU ? '' : 'none';
   document.getElementById('drawSelMark').style.display   = (!isDU && (l instanceof L.Polygon || l instanceof L.Circle)) ? '' : 'none';
@@ -2101,8 +2108,8 @@ function renderDrawSelection(){
   const editable = (l instanceof L.Polygon || l instanceof L.Polyline || l instanceof L.Circle);
   document.getElementById('drawEditBoundary').style.display = editable ? '' : 'none';
 }
-function duReportHtmlSafe(l){
-  try { return (typeof window.duFullPopupHtml==='function') ? window.duFullPopupHtml(l, shapeStats(l)) : shapeStats(l).html; }
+function duSummarySafe(l){
+  try { return (typeof window.duCompactHtml==='function') ? window.duCompactHtml(l) : shapeStats(l).html; }
   catch(e){ return shapeStats(l).html; }
 }
 // expose so the DU module can refresh the Draw panel after edits to the selected shape
@@ -3755,6 +3762,38 @@ function fitToData(){
         · vol @ ${depthFt} ft = <b>${Math.round(vol).toLocaleString()} yd³</b></b>
     </div>`;
     return head + duReportHtml(layer);
+  };
+  // Compact DU summary for the narrow Draw-tab panel (the full card overflows
+  // there). Key numbers only, no wide analyte table, no embedded buttons — the
+  // Draw panel has its own action row, so this avoids the duplicate Edit/Delete.
+  window.duCompactHtml = function(layer){
+    if(!isDU(layer)) return '';
+    const meta=layer.duMeta, stats=duStats(layer), calls=duCalls(stats);
+    const act=DU_ACTION_LOOKUP[meta.action]||DU_ACTION_LOOKUP.Undecided;
+    const sc=STATE.du.scenarios.find(s=>s.id===meta.scenarioId);
+    const db=stats.datasetBreakdown;
+    const badges=calls.map(c=>{
+      const drv=(c.call==='ACT'&&c.driver)?` ${c.driver}`:'';
+      return `<span class="${c.cls}" style="font-size:8.5px" title="${c.label}">${c.tag}:${c.call}${drv}</span>`;
+    }).join(' ');
+    const depthTag=meta.depthMode==='auto'?' <span class="du-depth-mode auto">auto</span>':'';
+    let rows='';
+    ['Hg','As'].forEach(a=>{
+      const s=stats.byAnalyte[a]; if(!s||!s.hasResult) return;
+      if(s.allND){ rows+=`<div>${a}: all ND (&lt; ${s.rod})</div>`; return; }
+      const uc = (s.uclC!=null) ? `UCL-C ${fmt(s.uclC,0)}` : '';
+      rows+=`<div>${a}: mean ${fmt(s.mean,0)} · max ${fmt(s.max,0)} · ${uc} · ${fmt(s.pctOverROD,0)}%&gt;ROD</div>`;
+    });
+    const sbtl=[];
+    ['Sb','Tl'].forEach(a=>{ const s=stats.byAnalyte[a]; if(s&&s.hasResult&&s.allND) sbtl.push(`${a} all ND`); });
+    return `<div class="du-compact">
+      <div style="margin-bottom:2px">${badges}</div>
+      <div class="dc-meta">${act.label} · ${sc?sc.name:'?'}</div>
+      <div class="dc-meta">n=${stats.n} (R1:${db['1']} R2:${db['2']} EA:${db.EA}) · ${stats.area_ac.toFixed(3)} ac · ${meta.depthFt} ft${depthTag}</div>
+      <div class="dc-meta">vol ${fmtInt(stats.volume_yd3)} yd³ · Hg mass ${fmt(stats.HgMass_kg,0)} kg</div>
+      <div class="dc-an">${rows}${sbtl.length?`<div style="color:var(--muted)">${sbtl.join(' · ')}</div>`:''}</div>
+      <div class="dc-note">Screening (Chebyshev UCL, ½DL). Open the DU on the map for the full table.</div>
+    </div>`;
   };
   window.duPromote = function(h){
     const l = window['_duHandle_'+h]; if(!l) return;
