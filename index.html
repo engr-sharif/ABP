@@ -22,7 +22,7 @@
 <style>
 /* ============================== LAYOUT / THEME ============================== */
 :root{
-  --bg:#f4f5f7; --panel:#ffffff; --ink:#1f2933; --muted:#6b7280;
+  --bg:#f4f5f7; --panel:#ffffff; --card:#ffffff; --ink:#1f2933; --muted:#6b7280;
   --line:#d7dbe0; --accent:#1f6feb; --accent-dk:#1450b0;
   --red:#d7191c; --green:#1a9641; --gray:#9e9e9e; --amber:#f0ad4e;
   --topbar:#1d2733;
@@ -30,7 +30,7 @@
   --ease:cubic-bezier(.22,.61,.36,1);
 }
 body.dark{
-  --bg:#0e1217; --panel:#161c24; --ink:#e7edf3; --muted:#93a1b0;
+  --bg:#0e1217; --panel:#161c24; --card:#1f2937; --ink:#e7edf3; --muted:#93a1b0;
   --line:#2a323d; --accent:#3b82f6; --accent-dk:#2563eb;
   --topbar:#0a0e13;
   --overlay:rgba(22,28,36,.94); --overlay-solid:#161c24; --shadow:rgba(0,0,0,.55);
@@ -192,6 +192,9 @@ body.dark .draw-selected{background:rgba(43,140,190,.12)}
 body.dark .du-list-item{background:#1f2937}
 body.dark .du-list-item:hover{background:#27324a}
 body.dark .du-compare-table th{background:#1f2937}
+body.dark .du-compare-table tr.active{background:#3a3418}
+body.dark .du-compare-table td.disturbed{background:#4a2c1a}
+body.dark .du-mini-btn:hover{background:#27324a}
 body.dark .du-warn{background:#3d2c00;border-color:#5c4400;color:#ffd966}
 
 label.field{display:block;margin:7px 0 3px;font-size:11px;font-weight:600;color:var(--muted)}
@@ -870,6 +873,7 @@ body:not(.tab-open) #coords{left:0}
           <label class="checkrow"><input type="checkbox" id="duIncludeEA" checked> Include EA historical in DU populations</label>
           <p class="du-method-note">
             <b>UCL method.</b> Per-DU stats show <b>Student-t UCL</b> and <b>Chebyshev UCL</b> on raw values (½ DL substitution for non-detects). PASS/ACT uses the Chebyshev (conservative).
+            <br><b>UCL population.</b> Surface interval (0–0.5 ft) results only — the exposure-point-concentration convention. Deeper horizons drive the DU's excavation <i>depth</i>, not the UCL.
             <br><b>Screening only.</b> Formal compliance is per Exposure Unit via ProUCL. Per-DU UCL is a screening aid, not a compliance test.
             <br><b>Sb &amp; Tl.</b> When 100% of in-DU samples are non-detect, the report shows "All ND at MDL X, &lt; ROD Y — no further action indicated" instead of stats.
           </p>
@@ -1027,7 +1031,7 @@ DATA.features.forEach(f => { f.properties.dataset = String(f.properties.round); 
 EA_DATA.features.forEach(f => { f.properties.dataset = 'EA'; });
 DATA.features = DATA.features.concat(EA_DATA.features);
 
-const CRITERIA = DATA.metadata.criteria;          // ROD:{Hg,As,Sb,Tl}  (PMB present in data but unused)
+const CRITERIA = DATA.metadata.criteria;          // ROD + PMB (background) thresholds — the ONLY source of criteria in the app
 const ANALYTES = ['Hg','As','Sb','Tl'];
 const ANALYTE_LABEL = {Hg:'Mercury (Hg)',As:'Arsenic (As)',Sb:'Antimony (Sb)',Tl:'Thallium (Tl)'};
 const UNITS = DATA.metadata.units || 'mg/kg';
@@ -1058,7 +1062,12 @@ function shapeOf(p){                       // round/OS/EA -> shape
   if(String(p.id).toUpperCase().startsWith('OS')) return 'triangle';
   return p.round === 1 ? 'circle' : 'square';
 }
-function hasDeep(p){ return typeof p.depth === 'string' && p.depth.indexOf('Deep') >= 0; }
+function hasDeep(p){
+  if(typeof p.depth === 'string' && p.depth.indexOf('Deep') >= 0) return true;
+  // EA features carry deep data as profile intervals or a _sub result, not a depth string
+  if(Array.isArray(p.profile) && p.profile.some(pr=>{ const m=String(pr.depth||'').match(/-\s*([\d.]+)/); return m && +m[1] > 0.6; })) return true;
+  return isNum(p.Hg_sub);
+}
 
 /* =========================================================================
    SECTION 2 — MAP & BASE LAYERS
@@ -1241,8 +1250,11 @@ const HI_COLOR = { safe:'#1a9641', elevated:'#fee08b', high:'#fdae61', severe:'#
 const HI_LABEL = { safe:'HI < 1 (acceptable)', elevated:'1 ≤ HI < 3 (elevated)', high:'3 ≤ HI < 10 (high)', severe:'HI ≥ 10 (severe)' };
 function hiContributions(p){
   const hi = hazardIndex(p); if(!isNum(hi) || hi<=0) return [];
+  const dls = {Hg:p.Hg_dl, As:p.As_dl, Sb:p.Sb_dl, Tl:p.Tl_dl};
   return ANALYTES.map(a=>{
-    const v = num(p[a]), thr = CRITERIA.ROD[a];
+    const thr = CRITERIA.ROD[a];
+    // same ND substitution as hazardIndex, so the driver percentages sum to the HI shown
+    let v = num(p[a]); if(v===null) v = ndSub(dls[a]);
     const r = (isNum(v) && isNum(thr) && thr>0) ? v/thr : 0;
     return { a, ratio:r, pct: r/hi*100 };
   }).filter(x=>x.pct>0).sort((a,b)=>b.pct-a.pct);
@@ -1472,31 +1484,34 @@ function boringLogSvg(layers){
   const W = 96;
   const fmt = v => Math.round(v).toLocaleString();
   const step = maxBot <= 1.5 ? 0.5 : (maxBot <= 3 ? 0.5 : 1);
+  // Theme-aware colors (dark-mode popups have a dark background — hardcoded
+  // #333/#555 text was unreadable there). var() works in inline SVG.
+  const cInk='var(--ink)', cMut='var(--muted)', cLine='var(--line)';
   let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="inherit" style="display:block">`;
-  svg += `<text x="1" y="8" font-size="8" fill="#999">ft</text>`;
+  svg += `<text x="1" y="8" font-size="8" fill="${cMut}">ft</text>`;
   // depth grid + tick labels (left axis)
   for(let f=0; f<=maxBot+1e-6; f+=step){
     const y = groundY + f*PXFT;
-    svg += `<line x1="${AX-1}" y1="${y}" x2="${bx0+bw}" y2="${y}" stroke="#e6e6e6" stroke-width="0.6"/>`;
-    svg += `<line x1="${AX-3}" y1="${y}" x2="${AX}" y2="${y}" stroke="#888" stroke-width="1"/>`;
-    svg += `<text x="${AX-4}" y="${y+3.3}" font-size="9.5" fill="#555" text-anchor="end">${+f.toFixed(2)}</text>`;
+    svg += `<line x1="${AX-1}" y1="${y}" x2="${bx0+bw}" y2="${y}" stroke="${cLine}" stroke-width="0.6"/>`;
+    svg += `<line x1="${AX-3}" y1="${y}" x2="${AX}" y2="${y}" stroke="${cMut}" stroke-width="1"/>`;
+    svg += `<text x="${AX-4}" y="${y+3.3}" font-size="9.5" fill="${cMut}" text-anchor="end">${+f.toFixed(2)}</text>`;
   }
   // ground surface line
-  svg += `<line x1="${AX-3}" y1="${groundY}" x2="${bx0+bw+2}" y2="${groundY}" stroke="#333" stroke-width="1.4"/>`;
+  svg += `<line x1="${AX-3}" y1="${groundY}" x2="${bx0+bw+2}" y2="${groundY}" stroke="${cInk}" stroke-width="1.4"/>`;
   // OM block (above grade)
   omLayers.forEach(l=>{
     const yc = groundY - omH/2;
     svg += `<rect x="${bx0}" y="${groundY-omH+1}" width="${bw}" height="${omH-2}" fill="${LEVEL_COLOR[layerLevel(l)]}" stroke="#5d3a14" stroke-width="0.8"/>`;
     svg += `<text x="${bx0+bw/2}" y="${yc+3}" font-size="8" font-weight="700" fill="#fff" text-anchor="middle">OM</text>`;
-    if(isNum(l.values && l.values.Hg)) svg += `<text x="${bx0+bw+4}" y="${yc+3.3}" font-size="9" fill="#333">${fmt(l.values.Hg)}</text>`;
+    if(isNum(l.values && l.values.Hg)) svg += `<text x="${bx0+bw+4}" y="${yc+3.3}" font-size="9" fill="${cInk}">${fmt(l.values.Hg)}</text>`;
   });
   // soil blocks (true-to-scale)
   soilLayers.forEach(l=>{
     const y0 = groundY + (l.top||0)*PXFT, y1 = groundY + (l.bot||0.5)*PXFT;
     const h = Math.max(4, y1-y0);
     const sampled = l.values && ANALYTES.some(a=>isNum(l.values[a]));
-    svg += `<rect x="${bx0}" y="${y0}" width="${bw}" height="${h}" fill="${LEVEL_COLOR[layerLevel(l)]}" stroke="#333" stroke-width="0.7" ${sampled?'':'stroke-dasharray="2,2"'}/>`;
-    if(isNum(l.values && l.values.Hg)) svg += `<text x="${bx0+bw+4}" y="${y0+h/2+3.3}" font-size="9.5" font-weight="700" fill="#333">${fmt(l.values.Hg)}</text>`;
+    svg += `<rect x="${bx0}" y="${y0}" width="${bw}" height="${h}" fill="${LEVEL_COLOR[layerLevel(l)]}" stroke="${cInk}" stroke-width="0.7" ${sampled?'':'stroke-dasharray="2,2"'}/>`;
+    if(isNum(l.values && l.values.Hg)) svg += `<text x="${bx0+bw+4}" y="${y0+h/2+3.3}" font-size="9.5" font-weight="700" fill="${cInk}">${fmt(l.values.Hg)}</text>`;
   });
   svg += `</svg>`;
   return svg;
@@ -1563,7 +1578,7 @@ function popupHtml(p){
     const omNote = exc.omOver ? `<div class="pbl-omnote">OM (organic layer) exceeds ROD — tracked separately from the soil verdict</div>` : '';
     statusBar = `<div class="pbl-status">
       <div><span class="pbl-std">vs ROD (${CRITERIA.ROD.Hg})</span> ${rodTxt}</div>
-      <div><span class="pbl-std">vs Background (${(CRITERIA.PMB||{}).Hg||58})</span> ${bgTxt}</div>
+      <div><span class="pbl-std">vs Background (${(CRITERIA.PMB||{}).Hg ?? '—'})</span> ${bgTxt}</div>
       ${omNote}
     </div>`;
   }
@@ -1812,10 +1827,13 @@ document.getElementById('ndRule').addEventListener('change', e=>{
 });
 
 // ---- Tab bar: pill tabs at top swap which panel is visible ----------------
-function activateTab(name){
+// ensure=true (session restore) means "make sure this tab is open" — never toggle
+// it closed, which is what happened when the saved tab matched the open one.
+function activateTab(name, ensure){
   const btns  = document.querySelectorAll('.tab-btn');
   const panes = document.querySelectorAll('.tab-pane');
   const cur   = document.querySelector('.tab-btn.active');
+  if(ensure && cur && cur.dataset.tab === name) return;
   // toggle off if the clicked tab is already active -> hide panel entirely (clean map)
   if(cur && cur.dataset.tab === name){
     cur.classList.remove('active');
@@ -2177,37 +2195,44 @@ function attachShapeInfo(layer){
     $('measureOut').innerHTML = html;
   }
 }
+// Single edit-event wiring for every drawn shape. Idempotent (guards against the
+// duplicate-handler leak that the erase-protect re-add path used to cause), bumps
+// a geometry revision (invalidates the DU stats cache), and keeps the Draw-tab
+// selected-shape panel live after vertex edits.
+function wireShapeEvents(layer){
+  if(layer._abpWired) return;
+  layer._abpWired = true;
+  layer.on('pm:edit pm:dragend pm:markerdragend pm:update', ()=>{
+    layer._geomRev = (layer._geomRev||0) + 1;
+    if(typeof onShapeEdited === 'function') onShapeEdited(layer);
+    attachShapeInfo(layer);
+    if(typeof _selectedShape !== 'undefined' && _selectedShape === layer &&
+       typeof renderDrawSelection === 'function') renderDrawSelection();
+    scheduleAutosave();
+  });
+}
 map.on('pm:create', e=>{
   const layer = e.layer;
   if(typeof pushUndo==='function') pushUndo('draw shape');   // undo point: before the shape lands
   applyShapeStyle(layer);
   drawnItems.addLayer(layer);
-  // SECTION — DECISION UNITS & SCENARIOS:
-  // 1) the "+ New DU" flow forces promotion + opens the edit modal;
-  // 2) otherwise honour the "mark next drawn shape as DU" toggle.
-  let promoted = false;
-  if(typeof consumePendingNewDU === 'function') promoted = consumePendingNewDU(layer);
-  if(!promoted && typeof maybeAutoPromoteToDU === 'function') maybeAutoPromoteToDU(layer);
+  // SECTION — DECISION UNITS & SCENARIOS: the "+ New DU" flow forces promotion
+  // + opens the edit modal for the shape that was just drawn.
+  if(typeof consumePendingNewDU === 'function') consumePendingNewDU(layer);
   attachShapeInfo(layer);
-  layer.on('pm:edit pm:dragend pm:markerdragend pm:update', ()=>{
-    if(typeof onShapeEdited === 'function') onShapeEdited(layer);
-    attachShapeInfo(layer); scheduleAutosave();
-  });
+  wireShapeEvents(layer);
   scheduleAutosave();
 });
 // When any shape is removed via Geoman's erase tool, if it was a DU, refresh the
 // DU list + comparison table so the panel reflects the deletion.
 map.on('pm:remove', e=>{
   // Protect DUs from the map erase tool: snap the DU right back and redirect the
-  // user to the Decision Units panel (which has the guarded Delete).
+  // user to the Decision Units panel (which has the guarded Delete). The layer's
+  // edit handlers survive removeLayer, so nothing needs re-wiring.
   if(e && e.layer && e.layer.duMeta){
     drawnItems.addLayer(e.layer);
     if(typeof applyDUStyle==='function') applyDUStyle(e.layer);
     attachShapeInfo(e.layer);
-    e.layer.on('pm:edit pm:dragend pm:update', ()=>{
-      if(typeof onShapeEdited==='function') onShapeEdited(e.layer);
-      attachShapeInfo(e.layer); scheduleAutosave();
-    });
     toast(`"${e.layer.duMeta.name}" is a Decision Unit — delete it from the Decision Units panel.`);
     return;
   }
@@ -2300,8 +2325,11 @@ document.getElementById('drawSelDuEdit').addEventListener('click', () => {
 });
 document.getElementById('drawSelMark').addEventListener('click', () => {
   const l = _selectedShape; if(!l || l.duMeta) return;
-  if(typeof pushUndo==='function') pushUndo('mark as DU');
-  if(typeof window.duMarkLayer === 'function' && window.duMarkLayer(l)) renderDrawSelection();
+  const snap = duSnapshot();     // commit only if the promote succeeds (overlap can block it)
+  if(typeof window.duMarkLayer === 'function' && window.duMarkLayer(l)){
+    pushUndoSnapshot(snap, 'mark as DU');
+    renderDrawSelection();
+  }
 });
 document.getElementById('drawSelDelete').addEventListener('click', () => {
   const l = _selectedShape; if(!l) return;
@@ -2350,7 +2378,7 @@ function loadShapesGeoJSON(gj){
     }            // SECTION — DECISION UNITS & SCENARIOS: restore DU metadata (styling re-applied by mergeDUStateFromSession at end of loadSession)
     drawnItems.addLayer(layer);
     attachShapeInfo(layer);
-    layer.on('pm:edit pm:dragend pm:update', ()=>{ attachShapeInfo(layer); scheduleAutosave(); });
+    wireShapeEvents(layer);
   });
 }
 $('clearDraw').addEventListener('click', ()=>{
@@ -2425,7 +2453,8 @@ function omChartConfig(xField, xLabel, crosshair){
   const maxV = Math.max(...r2.map(f=>Math.max(f.properties[xField], f.properties.Hg_OM)));
   ds.push({ label:'1:1', type:'line', data:[{x:1,y:1},{x:maxV,y:maxV}], borderColor:'#222', borderDash:[5,4], pointRadius:0, fill:false });
   ds.push({ label:'ROD '+CRITERIA.ROD.Hg, type:'line', data:[{x:1,y:CRITERIA.ROD.Hg},{x:maxV,y:CRITERIA.ROD.Hg}], borderColor:'#d7191c', borderDash:[3,3], pointRadius:0, fill:false });
-  ds.push({ label:'Background '+((CRITERIA.PMB||{}).Hg||58), type:'line', data:[{x:1,y:(CRITERIA.PMB||{}).Hg||58},{x:maxV,y:(CRITERIA.PMB||{}).Hg||58}], borderColor:'#2c7bb6', borderDash:[2,3], pointRadius:0, fill:false });
+  const pmbHgLine = (CRITERIA.PMB||{}).Hg;
+  if(isNum(pmbHgLine)) ds.push({ label:'Background '+pmbHgLine, type:'line', data:[{x:1,y:pmbHgLine},{x:maxV,y:pmbHgLine}], borderColor:'#2c7bb6', borderDash:[2,3], pointRadius:0, fill:false });
   return { type:'scatter', data:{datasets:ds}, options:{
     responsive:true, maintainAspectRatio:!crosshair, animation:false,   // modal (crosshair) fills its sized container; inline keeps aspect
     interaction:{ mode:'nearest', intersect:true },
@@ -2598,9 +2627,16 @@ function handleImport(file){
     let gj; try{ gj=JSON.parse(rd.result); }catch(e){ alert('Invalid JSON file.'); return; }
     const looksData = gj.metadata || (gj.features && gj.features.some(f=>
       f.geometry && f.geometry.type==='Point' && f.properties && ('rod_exceed' in f.properties || 'Hg' in f.properties)));
-    if(looksData && confirm('This looks like sample DATA. Load it (replaces current 94 points)?')){
+    if(looksData && confirm('This looks like sample DATA. Load it (replaces the current '+DATA.features.length+' points)?')){
       DATA.features.length = 0; gj.features.forEach(f=>DATA.features.push(f));
+      // derive the dataset key the filters/colors require — without it every
+      // imported point failed passesFilter and the map went blank
+      DATA.features.forEach(f=>{
+        const p=f.properties||{};
+        if(!p.dataset) p.dataset = p.source==='EA' ? 'EA' : String(p.round||'1');
+      });
       if(gj.metadata && gj.metadata.criteria) Object.assign(DATA.metadata.criteria, gj.metadata.criteria);
+      drawnItems.eachLayer(l=>{ if(l._duStatsCache) l._duStatsCache=null; });   // DU stats derive from DATA
       updateThrSlider(); buildMarkers(); buildLegend(); renderStats(); updateHeat(); updateIDW(); updateGrid();
       buildOmChart(); fitToData();
       $('sessionMsg').textContent='Loaded '+DATA.features.length+' features.';
@@ -2674,7 +2710,19 @@ function updateUndoButtons(){
   if(u){ u.disabled=!undoStack.length; u.title = undoStack.length ? 'Undo: '+undoStack[undoStack.length-1].label+' (Ctrl+Z)' : 'Nothing to undo'; }
   if(r){ r.disabled=!redoStack.length; r.title = redoStack.length ? 'Redo: '+redoStack[redoStack.length-1].label+' (Ctrl+Shift+Z)' : 'Nothing to redo'; }
 }
+function clearUndoHistory(){ undoStack.length=0; redoStack.length=0; updateUndoButtons(); }
+// Commit-after-success variant: capture the snapshot BEFORE a mutation that can
+// fail (e.g. promote blocked by overlap) and only push it onto the stack once the
+// mutation succeeds — prevents no-op "Oops" entries.
+function pushUndoSnapshot(snap, label){
+  if(!snap) return;
+  undoStack.push({ snap, label: label||'change' });
+  if(undoStack.length>UNDO_MAX) undoStack.shift();
+  redoStack=[]; updateUndoButtons();
+}
 window.pushUndo = pushUndo;   // let the DU module record undo points
+window.duSnapshot = duSnapshot;
+window.pushUndoSnapshot = pushUndoSnapshot;
 
 function scheduleAutosave(){
   _dirty = true; updateSaveStatus();
@@ -2705,6 +2753,14 @@ function restoreControls(c){
   PERSIST_CONTROLS.forEach(id=>{
     const el=$(id); if(!el || c[id]==null) return;
     if(el.type==='checkbox') el.checked=!!c[id]; else el.value=c[id];
+    // timeSlider's handler (applyTime) OVERWRITES the dataset-filter checkboxes
+    // with the slider's own mapping — dispatching it here clobbered any restored
+    // filter that didn't match the slider position. Set value + label only.
+    if(id==='timeSlider'){
+      const lbl=$('timeLabel');
+      if(lbl && typeof TIME_LABELS!=='undefined') lbl.textContent='Showing: '+(TIME_LABELS[+c[id]]||'all datasets');
+      return;
+    }
     // fire the control's own handler so readout labels + overlays re-sync
     const evt=(el.type==='range')?'input':'change';
     try{ el.dispatchEvent(new Event(evt,{bubbles:true})); }catch(e){}
@@ -2717,7 +2773,8 @@ function sessionData(){
     ndRule:STATE.ndRule,
     activeTab:STATE.activeTab,
     showLabels:STATE.showLabels, logScale:STATE.logScale, showPoints:STATE.showPoints,
-    filters:STATE.filters, layers:STATE.layers,
+    // copies, not live references — a held session object must not mutate when the UI does
+    filters:{...STATE.filters, datasets:[...(STATE.filters.datasets||[])]}, layers:{...STATE.layers},
     base:$('baseSelect').value,
     titleMain:document.querySelector('.tb-title').innerText,
     titleSub:document.querySelector('.tb-sub').innerText,
@@ -2866,13 +2923,17 @@ function applySession(d, silent){
   if(typeof refreshDUUI==='function') refreshDUUI();
   syncControlVisibility(); applyDisplay(); applyFilters(); updateGrid(); updateHeat(); updateIDW(); updateHI();
   if(typeof buildLegend==='function') buildLegend();
-  // restore the last-active tab (null = clean map with no panel open)
+  // restore the last-active tab (null = clean map with no panel open).
+  // ensure=true — never toggle an already-open tab closed during a restore.
   if(d.activeTab && document.querySelector('.tab-btn[data-tab="'+d.activeTab+'"]')){
-    activateTab(d.activeTab);
+    activateTab(d.activeTab, true);
   }
   // Reset any Google-Drive file binding — a freshly loaded local/browser state is
   // not "the Drive file we were editing"; gdLoadFile re-binds after this returns.
   if(typeof _gdResetBinding==='function') _gdResetBinding();
+  // Undo snapshots taken before this load belong to a different working state —
+  // mixing them in would let "Oops" splice old shapes into the loaded session.
+  if(typeof clearUndoHistory==='function') clearUndoHistory();
   _dirty = false; updateSaveStatus();
   return true;
 }
@@ -3361,7 +3422,7 @@ function autoDelineate(){
   });
   if($('delinShowPts').checked) exceed.forEach(f=>{
     const c=f.geometry.coordinates;
-    const dot=L.circleMarker([c[1],c[0]],{radius:3,color:'#7a0000',weight:1,fillColor:'#d7191c',fillOpacity:.9, pmIgnore:true});  // pmIgnore — auto-delineation dots reflect sample exceedances, not user shapes
+    const dot=L.circleMarker([c[1],c[0]],{radius:3,color:'#7a0000',weight:1,fillColor:'#d7191c',fillOpacity:.9, pmIgnore:true, interactive:false});  // reference dots: not clickable, not hoverable, not editable
     drawnItems.addLayer(dot); delinLayers.push(dot);
   });
   if(added) delinSummary();
@@ -3475,7 +3536,6 @@ function fitToData(){
     colorByAction: true,
     defaultBulkDensity: DEFAULT_BULK_DENSITY,
     includeEA: true,
-    autoMark: false,
     compareStandard: 'ROD',  // 'ROD' (Hg 204, mine-area) | 'PMB' (Hg 58, accessible/EIC-area) | 'BOTH' side-by-side
   };
 
@@ -3627,7 +3687,20 @@ function fitToData(){
     return { action:'Undecided',
       basis:`Suggested: Undecided — ${call.label}` };
   }
+  // Memoized: duStats is the hot path (full point-in-polygon sweep + 4 UCLs) and
+  // gets called several times per DU per UI refresh. The cache key covers every
+  // input that can change the result; geometry edits bump layer._geomRev via
+  // wireShapeEvents.
   function duStats(layer){
+    const meta = layer.duMeta || {};
+    const key = [layer._geomRev||0, meta.depthFt, meta.bulkDensity,
+                 STATE.du.defaultBulkDensity, STATE.du.includeEA].join('|');
+    if(layer._duStatsCache && layer._duStatsCache.key === key) return layer._duStatsCache.stats;
+    const stats = computeDuStats(layer);
+    layer._duStatsCache = { key, stats };
+    return stats;
+  }
+  function computeDuStats(layer){
     const samples = pointsInsideDU(layer);
     const n = samples.length;
     const byAnalyte = {};
@@ -3655,8 +3728,10 @@ function fitToData(){
         mean, max, min,
         uclT: studentTUCL(vals),
         uclC: chebyshevUCL(vals),
-        pctOverROD: 100*overROD/Math.max(1, n),
-        pctOverPMB: overPMB!=null ? 100*overPMB/Math.max(1, n) : null,
+        // denominator = this analyte's usable population (matches the displayed n),
+        // not the total in-DU sample count — keeps % consistent with its own n.
+        pctOverROD: 100*overROD/Math.max(1, vals.length),
+        pctOverPMB: overPMB!=null ? 100*overPMB/Math.max(1, vals.length) : null,
         rod, pmb,
         mdl: dls.length ? Math.max(...dls) : null,
       };
@@ -3689,7 +3764,7 @@ function fitToData(){
     const tag = standard === 'PMB' ? 'BG'  : 'ROD';
     const lbl = standard === 'PMB' ? 'background' : 'ROD';
     const thrs = (CRITERIA[standard === 'PMB' ? 'PMB' : 'ROD']) || {};
-    const HgThr = thrs.Hg || (standard === 'PMB' ? 58 : 204);
+    const HgThr = thrs.Hg;   // criteria come ONLY from DATA.metadata.criteria — no hard-coded copies
     // Back-compat: callers may still pass byAnalyte.Hg directly; detect that shape.
     const byA = (stats && stats.byAnalyte) ? stats.byAnalyte : { Hg: stats };
     const ratios = [];
@@ -3818,12 +3893,6 @@ function fitToData(){
     scheduleAutosave();
   }
 
-  // exposed to outer pm:create hook
-  window.maybeAutoPromoteToDU = function(layer){
-    if(!STATE.du.autoMark) return;
-    if(!(layer instanceof L.Polygon || layer instanceof L.Circle)) return;
-    promoteToDU(layer);
-  };
   window.onShapeEdited = function(layer){
     if(!isDU(layer)) return;
     const poly = layerToPoly(layer); if(!poly) return;
@@ -3847,11 +3916,13 @@ function fitToData(){
   }
   function renameScenario(){
     const s = activeScenario();
-    if(s.readonly){ alert('The "Unassigned" scenario cannot be renamed.'); return; }
+    if(s.readonly){ toast('The "Unassigned" scenario cannot be renamed.'); return; }
     const name = (prompt('Rename scenario:', s.name) || '').trim();
     if(!name) return;
+    if(typeof pushUndo==='function') pushUndo('rename scenario');
     s.name = name;
     refreshDUUI(); scheduleAutosave();
+    const out = document.getElementById('duCompareOut'); if(out && out.innerHTML) renderCompareTable();
   }
   function duplicateScenario(){
     const s = activeScenario();
@@ -3862,6 +3933,8 @@ function fitToData(){
     STATE.du.scenarios.push({ id:newId, name:newName, notes:s.notes });
     const toClone = [];
     eachDU(l => { if(l.duMeta.scenarioId === s.id) toClone.push(l); });
+    const idMap = {};                   // old DU id -> cloned DU id (for destination links)
+    const newLayers = [];
     toClone.forEach(l => {
       let gj, newLayer;
       if(l instanceof L.Circle){
@@ -3878,14 +3951,20 @@ function fitToData(){
           fillColor:l.options.fillColor, fillOpacity:l.options.fillOpacity, dashArray:l.options.dashArray });
       }
       drawnItems.addLayer(newLayer);
-      newLayer.duMeta = Object.assign({}, l.duMeta, {
-        id: genId('du'), scenarioId: newId,
-      });
+      const cloneId = genId('du');
+      idMap[l.duMeta.id] = cloneId;
+      newLayer.duMeta = Object.assign({}, l.duMeta, { id: cloneId, scenarioId: newId });
+      newLayers.push(newLayer);
       applyDUStyle(newLayer);
       attachShapeInfo(newLayer);
-      newLayer.on('pm:edit pm:dragend pm:update', () => {
-        window.onShapeEdited(newLayer); attachShapeInfo(newLayer); scheduleAutosave();
-      });
+      wireShapeEvents(newLayer);
+    });
+    // Remap Excavate&Consolidate destination links onto the cloned ids; a link
+    // whose target wasn't cloned would silently point into the OLD scenario, so
+    // null it (scenarioTotals then flags "destination DU not set").
+    newLayers.forEach(nl => {
+      const d = nl.duMeta.destinationDuId;
+      if(d) nl.duMeta.destinationDuId = idMap[d] || null;
     });
     STATE.du.activeScenarioId = newId;
     refreshDUUI(); refreshAllDUStyles(); scheduleAutosave();
@@ -3972,6 +4051,7 @@ function fitToData(){
       <div class="du-method-note">
         ${callLabels}<br>
         UCL = Student-t (UCL-t) &amp; Chebyshev (UCL-C) on raw values; ½ DL substitution for non-detects. PASS/ACT uses Chebyshev (conservative).
+        UCL population = surface interval (0–0.5 ft) results — the exposure-point convention; deeper horizons set DU depth, not the UCL.
         <br><b>Screening only</b> — formal ROD compliance is per Exposure Unit via ProUCL.
       </div>
       <div class="row" style="margin-top:6px;gap:4px;flex-wrap:wrap">
@@ -4046,8 +4126,12 @@ function fitToData(){
   };
   window.duPromote = function(h){
     const l = window['_duHandle_'+h]; if(!l) return;
-    if(typeof pushUndo==='function') pushUndo('mark as DU');
-    if(promoteToDU(l)) l.closePopup();
+    // snapshot BEFORE the mutation, commit to the undo stack only on success
+    const snap = window.duSnapshot ? window.duSnapshot() : null;
+    if(promoteToDU(l)){
+      if(snap && window.pushUndoSnapshot) window.pushUndoSnapshot(snap, 'mark as DU');
+      l.closePopup();
+    }
   };
   // Open the styled modal for editing a DU. Replaces the chain of native prompts
   // that the original implementation used — single form, all fields visible, OK/Cancel.
@@ -4122,7 +4206,7 @@ function fitToData(){
     _$('duEdit_bulkDensity').value = (meta.bulkDensity != null && meta.bulkDensity > 0) ? meta.bulkDensity : '';
     _$('duEdit_bulkDensity').placeholder = 'default ' + STATE.du.defaultBulkDensity;
     _$('duEdit_pem').value       = meta.postExcavationMean != null ? meta.postExcavationMean : '';
-    _$('duEdit_pem').placeholder = 'default = PMB ' + ((CRITERIA.PMB||{}).Hg || 58);
+    _$('duEdit_pem').placeholder = 'default = PMB ' + ((CRITERIA.PMB||{}).Hg ?? '?');
     _populateScenarioSelect(meta.scenarioId);
     _populateDestSelect(meta);
     _$('duEdit_notes').value     = meta.notes || '';
@@ -4258,15 +4342,18 @@ function fitToData(){
   // "+ New DU" — enter polygon draw mode; the next shape auto-promotes to a DU
   // in the active scenario and immediately opens its edit modal.
   let _pendingNewDU = false;
-  function startNewDU(){
+  function startNewDU(shape){
     _pendingNewDU = true;
-    try { map.pm.enableDraw('Polygon', { snappable:true, snapDistance:18 }); }
-    catch(e){ _pendingNewDU = false; alert('Could not start drawing: ' + e.message); }
+    try { map.pm.enableDraw(shape || 'Polygon', { snappable:true, snapDistance:18 }); toast('Draw the DU boundary — Esc cancels.'); }
+    catch(e){ _pendingNewDU = false; toast('Could not start drawing: ' + e.message); }
   }
   window.startNewDU = startNewDU;
-  // Hook the global pm:create so a shape drawn via "+ New DU" auto-promotes.
-  // (The general pm:create handler in the Draw section calls maybeAutoPromoteToDU;
-  // this flag forces promotion + edit for the dedicated New-DU flow.)
+  // If drawing ends without a shape (Escape / toolbar cancel), drop the pending
+  // flag — otherwise the NEXT ordinary polygon drawn later would silently become
+  // a DU. (pm:create fires before pm:drawend, so a successful draw is unaffected.)
+  map.on('pm:drawend', () => { _pendingNewDU = false; });
+  // Hook the global pm:create so a shape drawn via "+ New DU" auto-promotes
+  // and immediately opens its edit modal.
   window.consumePendingNewDU = function(layer){
     if(!_pendingNewDU) return false;
     _pendingNewDU = false;
@@ -4287,7 +4374,7 @@ function fitToData(){
     const acresByAction = {};
     DU_ACTIONS.forEach(a => acresByAction[a.key] = 0);
     const issues = [];
-    const pmbHg = (CRITERIA.PMB || {}).Hg || 58;
+    const pmbHg = (CRITERIA.PMB || {}).Hg;   // from data only; guarded with isNum below
     dus.forEach(l => {
       const meta  = l.duMeta;
       const stats = duStats(l);
@@ -4304,11 +4391,11 @@ function fitToData(){
         acresDisturbed += stats.area_ac;  // amend disturbs surface
       } else if(meta.action === 'HandExcavate'){
         removed = mass;
-        residual = (typeof meta.postExcavationMean === 'number') ? meta.postExcavationMean : pmbHg;
+        residual = (typeof meta.postExcavationMean === 'number') ? meta.postExcavationMean : (isNum(pmbHg) ? pmbHg : 0);
         acresDisturbed += stats.area_ac;
         volumeDisturbed += stats.volume_yd3;
       } else if(meta.action === 'ExcavateConsolidate'){
-        residual = pmbHg;
+        residual = isNum(pmbHg) ? pmbHg : 0;
         acresDisturbed += stats.area_ac;
         volumeDisturbed += stats.volume_yd3;
         if(!meta.destinationDuId) issues.push(`"${meta.name}": destination DU not set`);
@@ -4486,7 +4573,7 @@ function fitToData(){
     if(samples.length < 3){ alert('Not enough sampled Hg data.'); return; }
     const exceed = samples.filter(f => f.properties.Hg >= thr);
     if(!exceed.length){ alert(`No samples ≥ ${thr} mg/kg Hg.`); return; }
-    if(typeof pushUndo==='function') pushUndo('generate hot-spot DUs');   // one undo step for the whole batch
+    const undoSnap = window.duSnapshot ? window.duSnapshot() : null;   // committed below only if DUs were created
     const fc = turf.featureCollection(samples.map(f => turf.point(f.geometry.coordinates, { v: f.properties.Hg })));
     let grid, bands;
     try { grid  = turf.interpolate(fc, 8, { gridType:'point', property:'v', units:'meters', weight:2.5 }); }
@@ -4515,15 +4602,14 @@ function fitToData(){
             action: 'HandExcavate',   // depth left to auto-derive from deepest in-polygon exceedance
           });
           if(!ok){ created--; drawnItems.removeLayer(layer); }
-          else { layer.on('pm:edit pm:dragend pm:update', () => {
-            window.onShapeEdited(layer); attachShapeInfo(layer); scheduleAutosave();
-          }); }
+          else { wireShapeEvents(layer); }
         });
       });
     });
+    if(created > 0 && undoSnap && window.pushUndoSnapshot) window.pushUndoSnapshot(undoSnap, 'generate hot-spot DUs');
     refreshDUUI();
-    alert(`Generated ${created} hot-spot DU(s) at Hg ≥ ${thr} mg/kg in active scenario "${activeScenario().name}". Action = Hand-excavate hot spot.` +
-          (skipped ? `\n\n${skipped} contour piece(s) skipped because they overlapped existing DUs in the active scenario.` : ''));
+    toast(`Generated ${created} hot-spot DU(s) at Hg ≥ ${thr} mg/kg in "${activeScenario().name}"` +
+          (skipped ? ` · ${skipped} skipped (overlap)` : ''), 4200);
   }
 
   // ---- UI render ---------------------------------------------------------
@@ -4598,7 +4684,6 @@ function fitToData(){
       defaultBulkDensity: typeof savedDu.defaultBulkDensity === 'number' ? savedDu.defaultBulkDensity : def.defaultBulkDensity,
       includeEA: typeof savedDu.includeEA === 'boolean' ? savedDu.includeEA : def.includeEA,
       compareStandard: ['ROD','PMB','BOTH'].includes(savedDu.compareStandard) ? savedDu.compareStandard : def.compareStandard,
-      autoMark: false,
     };
     if(!STATE.du.scenarios.find(s => s.id === 'unassigned')){
       STATE.du.scenarios.unshift({ id:'unassigned', name:'Unassigned', notes:'', readonly:true });
